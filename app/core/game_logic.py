@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import uuid
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Union
 from pydantic import BaseModel
 from app.schemas.game_state import Card, Pile, GameState
 
@@ -22,7 +22,7 @@ class SpiderSolitaire:
         self.colms = np.zeros((80, 10), dtype='int32')          # Column positions
         self.completed_sequences = 0                            # Count of completed suits
         self.lastcard = np.zeros(10, dtype='int32')             # Last card in each column
-        self.histrec = np.zeros((self.HISTORY_SIZE, 5), dtype='int32')  # Move history
+        self.histrec = [None] * self.HISTORY_SIZE               # Move history (now stores dicts)
         self.deck = np.zeros(105, dtype='int32')                # Deck storage
         
         # Game state variables
@@ -166,17 +166,52 @@ class SpiderSolitaire:
     
     def execute_move(self, from_row: int, from_col: int, to_row: int, to_col: int):
         """Execute a valid move"""
+        # Record move details before executing
+        move_details = {
+            'type': 'move',
+            'from_row': from_row,
+            'from_col': from_col,
+            'to_row': to_row,
+            'to_col': to_col,
+            'cards_moved': [],
+            'revealed_card': None,
+            'completed_sequence': None
+        }
+        
+        # Calculate how many cards to move and record them
         move_length = 0
         current_row = from_row
         
-        # Calculate how many cards to move
         while (current_row < 80 and 
                self.cardsarray[current_row, from_col, 0] != 0 and
                (current_row == from_row or 
                 (self.cardsarray[current_row, from_col, 0] == self.cardsarray[current_row-1, from_col, 0] - 1 and
                  self.cardsarray[current_row, from_col, 1] == self.cardsarray[current_row-1, from_col, 1]))):
+            # Record each card being moved
+            card_data = {
+                'rank': self.cardsarray[current_row, from_col, 0],
+                'suit': self.cardsarray[current_row, from_col, 1],
+                'was_facedown': self.cardsarray[current_row, from_col, 0] == self.FACEDOWN,
+                'id': self.facedown_ids[current_row, from_col] if self.cardsarray[current_row, from_col, 0] == self.FACEDOWN else self.card_ids[current_row, from_col]
+            }
+            move_details['cards_moved'].append(card_data)
             move_length += 1
             current_row += 1
+        
+        # Check if we're revealing a facedown card
+        if (from_row > self.ROWBASE and 
+            self.cardsarray[from_row - 1, from_col, 0] == self.FACEDOWN):
+            move_details['revealed_card'] = {
+                'row': from_row - 1,
+                'col': from_col,
+                'rank': self.facedown_cards[from_row - 1, from_col, 0],
+                'suit': self.facedown_cards[from_row - 1, from_col, 1],
+                'id': self.facedown_ids[from_row - 1, from_col]
+            }
+        
+        # Store this move in history
+        hist_index = self.historycount % self.HISTORY_SIZE
+        self.histrec[hist_index] = move_details
         
         # Perform the move
         for i in range(move_length):
@@ -240,6 +275,17 @@ class SpiderSolitaire:
                         break
                 
                 if complete:
+                    # Record this before removing
+                    hist_index = self.historycount % self.HISTORY_SIZE
+                    if not isinstance(self.histrec[hist_index], dict):
+                        self.histrec[hist_index] = {}
+                    self.histrec[hist_index]['completed_sequence'] = {
+                        'row': top_row,
+                        'col': col,
+                        'start_rank': self.cardsarray[top_row, col, 0],
+                        'suit': suit
+                    }
+                    
                     self.remove_completed_suit(top_row, col, suit)
     
     def remove_completed_suit(self, row: int, col: int, suit: int):
@@ -263,20 +309,108 @@ class SpiderSolitaire:
         if self.dealnext10 >= self.INITIAL_DEALS:
             raise ValueError("No more cards to deal")
             
+        # Record the deal in history
+        move_details = {
+            'type': 'deal',
+            'cards_dealt': [],
+            'lastcards_before': self.lastcard.copy()
+        }
+        
         for i in range(10):
             if self.nextcard >= 104:
                 raise ValueError("No more cards in deck")
                 
             col = i
             target_row = self.lastcard[col] + 1
+            move_details['cards_dealt'].append({
+                'row': target_row,
+                'col': col,
+                'rank': self.deck[self.nextcard] % 13 + 1,
+                'suit': self.deck[self.nextcard] % 4 + 1,
+                'id': str(uuid.uuid4())
+            })
+            
             self.cardsarray[target_row, col, 0] = self.deck[self.nextcard] % 13 + 1
             self.cardsarray[target_row, col, 1] = self.deck[self.nextcard] % 4 + 1
-            self.card_ids[target_row, col] = str(uuid.uuid4())
+            self.card_ids[target_row, col] = move_details['cards_dealt'][-1]['id']
             self.lastcard[col] = target_row
             self.nextcard += 1
         
+        # Store the deal in history
+        hist_index = self.historycount % self.HISTORY_SIZE
+        self.histrec[hist_index] = move_details
+        
         self.dealnext10 += 1
         self.historycount += 1
+    
+    def undo_move(self):
+        """Undo the last move"""
+        if self.historycount <= 0:
+            raise ValueError("No moves to undo")
+        
+        # Get the last move (using circular buffer)
+        hist_index = (self.historycount - 1) % self.HISTORY_SIZE
+        move_details = self.histrec[hist_index]
+        
+        if move_details is None:
+            raise ValueError("Invalid move history")
+        
+        if move_details['type'] == 'move':
+            # Undo a card movement
+            for i, card_data in enumerate(move_details['cards_moved']):
+                # Move cards back to original position
+                from_row = move_details['from_row'] + i
+                from_col = move_details['from_col']
+                
+                self.cardsarray[from_row, from_col, 0] = card_data['rank']
+                self.cardsarray[from_row, from_col, 1] = card_data['suit']
+                
+                if card_data['was_facedown']:
+                    self.facedown_ids[from_row, from_col] = card_data['id']
+                else:
+                    self.card_ids[from_row, from_col] = card_data['id']
+                
+                # Clear destination position
+                to_row = move_details['to_row'] + i + 1
+                to_col = move_details['to_col']
+                self.cardsarray[to_row, to_col, 0] = 0
+            
+            # Update last card positions
+            self.lastcard[move_details['from_col']] = move_details['from_row'] + len(move_details['cards_moved']) - 1
+            self.lastcard[move_details['to_col']] = move_details['to_row']
+            
+            # If a card was revealed, cover it back up
+            if move_details.get('revealed_card'):
+                rc = move_details['revealed_card']
+                self.cardsarray[rc['row'], rc['col'], 0] = self.FACEDOWN
+                self.facedown_cards[rc['row'], rc['col'], 0] = rc['rank']
+                self.facedown_cards[rc['row'], rc['col'], 1] = rc['suit']
+                self.facedown_ids[rc['row'], rc['col']] = rc['id']
+            
+            # If a sequence was completed, put it back
+            if move_details.get('completed_sequence'):
+                cs = move_details['completed_sequence']
+                self.completed_sequences -= 1
+                for i in range(13):
+                    row = cs['row'] + i
+                    col = cs['col']
+                    self.cardsarray[row, col, 0] = cs['start_rank'] - i
+                    self.cardsarray[row, col, 1] = cs['suit']
+                    self.card_ids[row, col] = f"reconstructed-{row}-{col}"
+                self.lastcard[col] = cs['row'] + 12
+        
+        elif move_details['type'] == 'deal':
+            # Undo a card deal
+            for card in move_details['cards_dealt']:
+                self.cardsarray[card['row'], card['col'], 0] = 0
+                self.card_ids[card['row'], card['col']] = None
+                self.nextcard -= 1
+            
+            # Restore last card positions
+            self.lastcard = move_details['lastcards_before'].copy()
+            self.dealnext10 -= 1
+        
+        self.historycount -= 1
     
     def solve(self):
         """Let the AI solve moves"""
@@ -320,14 +454,6 @@ class SpiderSolitaire:
             if not moved and self.dealnext10 < self.INITIAL_DEALS:
                 self.deal_cards()
                 moved = True
-    
-    def undo_move(self):
-        """Undo the last move"""
-        if self.historycount <= 0:
-            raise ValueError("No moves to undo")
-            
-        self.historycount -= 1
-        # Implementation would need to track move history
     
     def cardfrontclick(self, row: int, col: int):
         """Handle card click (original autos logic)"""

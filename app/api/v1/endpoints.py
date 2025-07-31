@@ -17,7 +17,6 @@ async def get_game_state():
 
 @router.post("/move", response_model=GameState)
 async def make_move(move: MoveRequest):
-    print(move)
     try:
         game_instance.make_move(
             from_row=move.from_row,
