@@ -18,11 +18,9 @@ async def get_game_state():
 @router.post("/move", response_model=GameState)
 async def make_move(move: MoveRequest):
     try:
-        game_instance.make_move(
+        game_instance.auto_move(
             from_row=move.from_row,
             from_col=move.from_col,
-            to_row=move.to_row,
-            to_col=move.to_col
         )
         return game_instance.get_game_state()
     except Exception as e:
