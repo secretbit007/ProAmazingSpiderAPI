@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from app.core.game_logic import game_instance
 from app.schemas.game_state import GameState, MoveRequest, NewGameRequest
+from typing import List
+from time import sleep
 
 router = APIRouter()
 
@@ -16,14 +18,15 @@ async def new_game(request: NewGameRequest):
 async def get_game_state():
     return game_instance.get_game_state()
 
-@router.post("/move", response_model=GameState)
+@router.post("/move", response_model=List[GameState])
 async def make_move(move: MoveRequest):
     try:
         game_instance.cardfrontclick(
             rw=move.from_row,
             cl=move.from_col,
         )
-        return game_instance.get_game_state()
+        
+        return game_instance.states
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
