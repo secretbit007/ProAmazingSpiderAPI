@@ -7,7 +7,8 @@ router = APIRouter()
 @router.post("/new-game", response_model=GameState)
 async def new_game(request: NewGameRequest):
     try:
-        return game_instance.new_game(request.difficulty)
+        game_instance.new_game(request.difficulty)
+        return game_instance.get_game_state()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -18,9 +19,9 @@ async def get_game_state():
 @router.post("/move", response_model=GameState)
 async def make_move(move: MoveRequest):
     try:
-        game_instance.auto_move(
-            from_row=move.from_row,
-            from_col=move.from_col,
+        game_instance.cardfrontclick(
+            rw=move.from_row,
+            cl=move.from_col,
         )
         return game_instance.get_game_state()
     except Exception as e:
@@ -29,7 +30,7 @@ async def make_move(move: MoveRequest):
 @router.post("/deal", response_model=GameState)
 async def deal_cards():
     try:
-        game_instance.deal_cards()
+        game_instance.stackclick()
         return game_instance.get_game_state()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -45,7 +46,7 @@ async def solve_game():
 @router.post("/undo", response_model=GameState)
 async def undo_move():
     try:
-        game_instance.undo_move()
+        game_instance.undo()
         return game_instance.get_game_state()
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

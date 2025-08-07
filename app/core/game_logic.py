@@ -1,529 +1,1305 @@
 import numpy as np
 import random
-import uuid
-from typing import Dict, List, Tuple, Optional
-from app.schemas.game_state import GameState, Card, Pile, MoveRequest
+from uuid import uuid4
+from app.schemas.game_state import GameState, Card, Pile
 
 class SpiderSolitaire:
-    # Constants from original game (UI-related removed)
-    FACEDOWN = 15
-    ROWBASE = 5
-    HISTORY_SIZE = 1000
-    INITIAL_DEALS = 5
-    
     def __init__(self):
         self.initialize_game()
-        
-    def initialize_game(self):
-        """Initialize game state matching original implementation"""
-        self.cardsarray = np.zeros((80, 10, 2), dtype='int32')  # Main game board [row,col,(rank,suit)]
-        self.facedown_cards = np.zeros((80, 10, 2), dtype='int32')  # Hidden card data
-        self.card_ids = np.empty((80, 10), dtype='object')      # Card unique IDs
-        self.lastcard = np.zeros(10, dtype='int32')             # Last card in each column
-        self.histrec = [None] * self.HISTORY_SIZE               # Move history
-        self.deck = np.zeros(104, dtype='int32')                # Initialize the deck (104 cards for spider solitaire - 2 decks)
-        
-        # Game state variables
-        self.nextcard = 0               # Next card to deal
-        self.historycount = 0           # Move counter
-        self.dealnext10 = 0             # Number of deals completed
-        self.difficulty = 9             # Default difficulty (0-9)
-        self.completed_sequences = 0    # Count of completed suits removed
-        
-        # Game logic tracking (originally UI-related but needed for logic)
-        self.removedsuit = np.zeros(9, dtype='int32')  # Removed suits tracking
-    
-    def new_game(self, difficulty: int = 9) -> GameState:
-        """Start a new game with specified difficulty (0-9)"""
-        self.initialize_game()
-        self.difficulty = 9 - difficulty  # Invert difficulty to match original
-        
-        self.shuffle()
-        self.setup_initial_deal()
-        return self.get_game_state()
-    
-    def shuffle(self):
-        """Shuffle the deck matching original game's logic"""
-        # Initialize two decks (104 cards)
-        for i in range(1, 105):
-            self.deck[i-1] = ((i-1) % 52) + 1  # Values 1-52 repeated twice
-        
-        # Apply original game's special shuffling logic
-        random.seed(78)  # Fixed seed for reproducibility as in original
-        
-        # Difficulty-based initial cards (first 8 cards must be unique ranks)
-        newdig = np.zeros(14, dtype='int32')
-        if self.difficulty < 9:
-            unique_positions = random.sample(range(52), 8)
-            for pos in unique_positions:
-                rank = self.deck[pos] % 13 + 1
-                while rank in newdig:
-                    # Reshuffle until we get unique ranks
-                    np.random.shuffle(self.deck[:52])
-                    rank = self.deck[pos] % 13 + 1
-                newdig[pos % 8] = rank
-        
-        # Apply original game's special card positioning
-        temp = self.deck[44:56].copy()
-        self.deck[44:56] = self.deck[12:24]
-        self.deck[12:24] = temp
-        self.deck[:12] = self.deck[44:56]
-    
-    def setup_initial_deal(self):
-        """Deal initial cards matching original game's setup"""
-        self.nextcard = 0
-        for jl in range(10):
-            # Initialize column lengths
-            self.lastcard[jl] = self.ROWBASE + (5 if jl < 4 else 4)  # First 4 cols get 6 cards, others get 5
-                
-        # Deal initial cards - matches original 7-row deal
-        rowdepth = self.ROWBASE
-        while rowdepth < self.ROWBASE + 7:
-            for jl in range(10):
-                if self.nextcard < 44 or (self.nextcard < 54 and rowdepth == self.ROWBASE + 6):
-                    # Deal facedown cards (first 44 cards, plus 10 more in last row)
-                    self.cardsarray[rowdepth, jl, 0] = self.FACEDOWN
-                    self.facedown_cards[rowdepth, jl, 0] = self.deck[self.nextcard] % 13 + 1
-                    self.facedown_cards[rowdepth, jl, 1] = self.deck[self.nextcard] % 4 + 1
-                    self.card_ids[rowdepth, jl] = str(uuid.uuid4())
-                    self.nextcard += 1
-                elif self.nextcard < 54:
-                    # Deal faceup cards (positions 44-53)
-                    self.cardsarray[rowdepth, jl, 0] = self.deck[self.nextcard] % 13 + 1
-                    self.cardsarray[rowdepth, jl, 1] = self.deck[self.nextcard] % 4 + 1
-                    self.card_ids[rowdepth, jl] = str(uuid.uuid4())
-                    self.nextcard += 1
-            rowdepth += 1
-    
-    def check_sequence_length(self, row: int, col: int) -> int:
-        """Check how many cards are in sequence from this position"""
-        length = 1
-        while (row + length <= self.lastcard[col] and
-               self.cardsarray[row + length, col, 0] == self.cardsarray[row + length - 1, col, 0] - 1):
-            length += 1
-        return length
-    
-    def display_board(self):
-        """Display the current game board in terminal with colored output"""
-        # Define card symbols and colors
-        suits_symbols = {1: '♥', 2: '♦', 3: '♣', 4: '♠'}
-        suits_colors = {1: '\033[91m', 2: '\033[91m', 3: '\033[92m', 4: '\033[92m'}  # Red/Green
-        reset_color = '\033[0m'
-        facedown_symbol = '0'
-        
-        # Find how many rows we need to display
-        max_height = max(self.lastcard) - self.ROWBASE + 1
-        if max_height < 1:
-            max_height = 1
-        
-        print("\n" + "="*80)
-        print(f"Spider Solitaire (Difficulty: {9 - self.difficulty}, Completed: {self.completed_sequences})")
-        print(f"Cards remaining: {104 - self.nextcard}, Deals left: {self.INITIAL_DEALS - self.dealnext10}")
-        print("="*80)
-        
-        # Print column headers
-        print("   " + "   ".join(f"Col {i}" for i in range(10)))
-        
-        for row in range(self.ROWBASE, self.ROWBASE + max_height):
-            row_display = []
-            for col in range(10):
-                if row <= self.lastcard[col]:
-                    if self.cardsarray[row, col, 0] == self.FACEDOWN:
-                        # Facedown card
-                        row_display.append(f"{facedown_symbol}")
-                    else:
-                        # Faceup card
-                        rank = self.cardsarray[row, col, 0]
-                        suit = self.cardsarray[row, col, 1]
-                        
-                        # Convert rank to letter for face cards
-                        rank_str = str(rank)
-                        
-                        color = suits_colors.get(suit, '')
-                        row_display.append(f"{color}{rank_str}{reset_color}")
-                else:
-                    row_display.append("  ")  # Empty space
-                    
-            # Print the row with column indicators
-            print(f"{row-self.ROWBASE:2d} " + "  ".join(row_display))
-        
-        print("="*80 + "\n")
-    
-    def execute_move(self, request: MoveRequest) -> GameState:
-        """Execute a valid move with original game's logic"""
-        sequence_length = self.check_sequence_length(request.from_row, request.from_col)
 
-        # Check if destination column is empty
-        is_empty_column = (self.cardsarray[self.ROWBASE, request.to_col, 0] == 0)
+    def initialize_game(self):
+        self.wh = 800
+        self.ht = 500
         
-        # Record move details
-        move_details = {
-            'type': 'move',
-            'from_row': request.from_row,
-            'from_col': request.from_col,
-            'to_row': request.to_row,
-            'to_col': request.to_col,
-            'cards_moved': [],
-            'revealed_card': None,
-            'completed_sequence': None
-        }
-        
-        # Check for facedown card reveal
-        if (request.from_row > self.ROWBASE and 
-            self.cardsarray[request.from_row - 1, request.from_col, 0] == self.FACEDOWN):
-            move_details['revealed_card'] = {
-                'row': request.from_row - 1,
-                'col': request.from_col,
-                'rank': self.facedown_cards[request.from_row - 1, request.from_col, 0],
-                'suit': self.facedown_cards[request.from_row - 1, request.from_col, 1],
-                'id': self.card_ids[request.from_row - 1, request.from_col]
-            }
-        
-        # Perform the move
-        for i in range(sequence_length):
-            # Move card data
-            src_row = request.from_row + i
-            
-            # Calculate destination row differently for empty columns
-            if is_empty_column:
-                dest_row = self.ROWBASE + i
-            else:
-                dest_row = request.to_row + 1 + i
-            
-            self.cardsarray[dest_row, request.to_col] = self.cardsarray[src_row, request.from_col]
-            self.card_ids[dest_row, request.to_col] = self.card_ids[src_row, request.from_col]
-            
-            # Clear source position
-            self.cardsarray[src_row, request.from_col] = 0
-            self.card_ids[src_row, request.from_col] = None
-            
-            # Record moved card
-            move_details['cards_moved'].append({
-                'rank': self.cardsarray[dest_row, request.to_col, 0],
-                'suit': self.cardsarray[dest_row, request.to_col, 1],
-                'from_row': src_row,
-                'from_col': request.from_col,
-                'to_row': dest_row,
-                'to_col': request.to_col,
-                'id': self.card_ids[dest_row, request.to_col]
-            })
-        
-        # Update last card positions
-        if is_empty_column:
-            self.lastcard[request.to_col] = self.ROWBASE + sequence_length - 1
-        else:
-            self.lastcard[request.to_col] = request.to_row + sequence_length
-            
-        self.lastcard[request.from_col] = request.from_row - 1
-        
-        # Reveal facedown card if needed
-        if move_details.get('revealed_card'):
-            rc = move_details['revealed_card']
-            self.cardsarray[rc['row'], rc['col'], 0] = rc['rank']
-            self.cardsarray[rc['row'], rc['col'], 1] = rc['suit']
-            self.card_ids[rc['row'], rc['col']] = rc['id']
-        
-        # Check for completed sequences
-        completed = self.check_completed_suits()
-        if completed:
-            move_details['completed_sequence'] = completed
-        
-        # Store move in history
-        self.histrec[self.historycount % self.HISTORY_SIZE] = move_details
-        self.historycount += 1
-        
-        return self.get_game_state()
-    
-    def check_completed_suits(self) -> Optional[Dict]:
-        """Check for completed suits matching original game logic"""
-        for col in range(10):
-            if self.lastcard[col] - self.ROWBASE + 1 < 13:
-                continue
-                
-            # Check for 13-card sequence of same suit
-            top_row = self.lastcard[col] - 12
-            suit = self.cardsarray[top_row, col, 1]
-            is_complete = True
-            
-            for i in range(13):
-                if (self.cardsarray[top_row + i, col, 0] != self.cardsarray[top_row, col, 0] - i or
-                    self.cardsarray[top_row + i, col, 1] != suit):
-                    is_complete = False
-                    break
-            
-            if is_complete:
-                # Remove the sequence
-                for i in range(13):
-                    self.cardsarray[top_row + i, col] = 0
-                    self.card_ids[top_row + i, col] = None
-                
-                self.lastcard[col] = top_row - 1
-                self.completed_sequences += 1
-                
-                # Track removed suit
-                for i in range(9):
-                    if self.removedsuit[i] == 0:
-                        self.removedsuit[i] = suit
-                        break
-                
-                # Return completion details
-                return {
-                    'column': col,
-                    'suit': suit,
-                    'top_rank': self.cardsarray[top_row, col, 0],
-                    'cards': [(top_row + i, col) for i in range(13)]
-                }
-        return None
-    
-    def deal_cards(self) -> GameState:
-        """Deal 10 more cards matching original game logic"""
-        if self.dealnext10 >= self.INITIAL_DEALS:
-            raise ValueError("No more cards to deal")
-            
-        # Record the deal in history
-        move_details = {
-            'type': 'deal',
-            'cards_dealt': [],
-            'lastcards_before': self.lastcard.copy()
-        }
-        
-        for col in range(10):
-            if self.nextcard >= 104:
-                raise ValueError("No more cards in deck")
-                
-            target_row = self.lastcard[col] + 1
-            rank = self.deck[self.nextcard] % 13 + 1
-            suit = self.deck[self.nextcard] % 4 + 1
-            
-            self.cardsarray[target_row, col, 0] = rank
-            self.cardsarray[target_row, col, 1] = suit
-            self.card_ids[target_row, col] = str(uuid.uuid4())
-            self.lastcard[col] = target_row
-            
-            move_details['cards_dealt'].append({
-                'row': target_row,
-                'col': col,
-                'rank': rank,
-                'suit': suit,
-                'id': self.card_ids[target_row, col]
-            })
-            self.nextcard += 1
-        
-        # Store the deal in history
-        self.histrec[self.historycount % self.HISTORY_SIZE] = move_details
-        self.dealnext10 += 1
-        self.historycount += 1
-        
-        return self.get_game_state()
-    
-    def auto_move(self, from_row: int, from_col: int) -> bool:
-        """Implement original game's auto-move logic (cardfrontclick)"""
-        if from_col < 0 or from_col > 9 or from_row < self.ROWBASE:
-            return False
-            
-        if self.cardsarray[from_row, from_col, 0] == 0:
-            return False
-            
-        # Find all possible destinations
-        possible_moves = []
-        card_rank = self.cardsarray[from_row, from_col, 0]
-        card_suit = self.cardsarray[from_row, from_col, 1]
-        sequence_length = self.check_sequence_length(from_row, from_col)
-        
-        for dest_col in range(10):
-            if dest_col == from_col:
-                continue
-                
-            if self.cardsarray[self.ROWBASE, dest_col, 0] == 0:
-                # Empty column - must move entire sequence
-                if from_row == self.ROWBASE or sequence_length == (self.lastcard[from_col] - from_row + 1):
-                    possible_moves.append((self.ROWBASE, dest_col))
-            else:
-                # Non-empty column - check suit and rank
-                dest_row = self.lastcard[dest_col]
-                if (self.cardsarray[dest_row, dest_col, 0] == card_rank + 1):
-                    possible_moves.append((dest_row, dest_col))
-        
-        # Implement original game's priority logic
-        if possible_moves:
-            # Prefer same-suit destinations
-            same_suit_moves = [m for m in possible_moves if 
-                              self.cardsarray[m[0], m[1], 1] == card_suit]
-            if same_suit_moves:
-                self.execute_move(MoveRequest(
-                    from_row=from_row,
-                    from_col=from_col,
-                    to_row=same_suit_moves[0][0],
-                    to_col=same_suit_moves[0][1]
-                ))
-                return True
-            else:
-                self.execute_move(MoveRequest(
-                    from_row=from_row,
-                    from_col=from_col,
-                    to_row=possible_moves[0][0],
-                    to_col=possible_moves[0][1]
-                ))
-                return True
-        return False
-    
-    def solve(self) -> GameState:
-        """Implement original game's solve logic (joinz)"""
-        moved = True
-        while moved:
-            moved = False
-            
-            # Check for completed suits first
-            if self.check_completed_suits():
-                moved = True
-                continue
-                
-            # Try to join sequences of same suit
-            for from_col in range(10):
-                if self.cardsarray[self.ROWBASE, from_col, 0] == 0:
-                    continue
-                    
-                from_row = self.lastcard[from_col]
-                card_rank = self.cardsarray[from_row, from_col, 0]
-                card_suit = self.cardsarray[from_row, from_col, 1]
-                
-                # Look for matching sequences in other columns
-                for to_col in range(10):
-                    if from_col == to_col:
-                        continue
-                        
-                    if self.cardsarray[self.ROWBASE, to_col, 0] == 0:
-                        # Try moving to empty column
-                        if self.auto_move(from_row, from_col):
-                            moved = True
-                            break
+        self.w10 = int(self.wh // 10.3)
+        self.h33 = self.ht // 33
+        self.h33t30 = self.ht    #  h33 * 30
+        self.col = 0
+        self.jmov = 0
+        self.ia = 0
+        self.ijj = 0
+        self.j = 0
+        self.blankcolumns = 0
+        self.movecol = 0
+        self.n = 0
+        self.rowe = 0
+        self.steplimit = 0  #
+        self.cc = 0
+        self.ct = 0
+
+        self.dot = 0
+        self.dott = 0
+
+        self.fragment_length = 0
+        self.xa = 0
+        self.ya = 0
+
+        self.pp = "pp"
+
+        self.jx = 0
+        self.timedelayer = 10
+
+        self.displaycounter = 0
+        self.facedown = 15
+        self.difficulty = 0
+
+        self.cardrownumber = 0
+        self.cardcolumn = 0
+        self.cl = 0
+        self.rw = 0
+        self.rowbase = 5
+        self.oldcolumn = 0
+        self.oldrow = 0
+        self.column = 0
+        self.row = 0
+        self.oldc = -1
+        self.oldr = -1
+        self.columnold = 0
+        self.rowold = 0
+        self.rowfordisplay = 0
+        self.columnfordisplay = 0
+        self.fromcolumn = 0
+        self.fromrow = 0
+        self.colautostart = 0
+        self.rowautostart = 0  # card variables
+        self.nextcard = 0
+        self.redalert = 0
+        self.colsize = 30
+        self.suitremoved = 0
+        self.newtencards = 0  # control variables
+        self.displaycount = 0
+
+        self.columnformove = 0
+        self.totya = 0
+        self.expander = 10
+        self.historysize = 1000
+        self.u = np.zeros(shape=18, dtype='int32')
+        self.gaps = np.zeros(shape=10, dtype='int32')
+        self.dims = np.zeros(shape=18, dtype='int32')
+        self.removedsuit = np.zeros(shape=9, dtype='int32')
+
+        self.compressor = np.zeros(shape=10, dtype='int32')
+        self.lastcard = np.zeros(shape=10, dtype='int32')
+        self.firstcard = np.zeros(shape=10, dtype='int32')
+        self.suitcard = np.zeros(shape=10, dtype='int32')
+        self.colmoves = np.zeros(shape=10, dtype='int32')
+        self.histrec = np.zeros(shape=(self.historysize, 5), dtype='int32')
+        self.xi = np.zeros(shape=23, dtype='int32')
+        self.by = np.zeros(shape=23, dtype='int32')
+        self.lth = np.zeros(shape=23, dtype='int32')
+        self.lx = np.zeros(shape=23, dtype='int32')
+        self.ly = np.zeros(shape=23, dtype='int32')
+        self.blanks_program = np.zeros(shape=23, dtype='int32')
+        self.ledgerow = np.zeros(shape=23, dtype='int32')
+
+        self.fills = ['', "black", "cornflower blue", "red2", "orange"]
+        self.symbs = ['', '\u2660', '\u2663', '\u2665', '\u2666']
+
+        self.ledgecolumn = np.zeros(shape=22, dtype='int32')
+        self.blankcolumn = np.zeros(shape=23, dtype='int32')
+
+        self.cardsarray = np.zeros(shape=(80, 10, 2), dtype='int32')  # Deal layout array
+        self.colms = np.zeros(shape=(80, 10), dtype='int32')
+
+        self.cardstore = np.zeros(shape=(200, 2), dtype='int32')
+        self.positionstore = np.zeros(shape=(200, 2), dtype='int32')
+        self.movesz = np.zeros(shape=200, dtype='int32')
+        self.caxsx = np.zeros(shape=(12, 10, 2), dtype='int32')
+
+        self.dealnext10 = 0
+        self.historycount = 0
+        self.ilptr = 0
+        self.endptr = 0
+        self.expptr = 3 * self.ht // 10
+        self.color = 0
+        self.htx3div10 = int(3 * self.ht // 10)
+        self.htdiv20 = int(self.ht // 20)
+        self.honours = ("J", "Q", "K")
+        self.it = 0
+        self.cds = np.zeros(shape=53, dtype='int32')
+        self.card = np.zeros(shape=105, dtype='int32')
+        self.dack = np.zeros(shape=(105), dtype='int32')
+        self.dck = np.zeros(shape=(105), dtype='int32')
+        self.deck = np.zeros(shape=(105), dtype='int32')
+        self.newdig = np.zeros(shape=14, dtype='int32')
+        self.oldmasthead = -1
+        self.repsuity = 0
+
+
+    def new(self):
+        self.nextcard = 0
+        self.historycount = 0
+        self.dealnext10 = 0
+
+        self.shuffle()
+        for i in range(10):
+            self.compressor[i] = self.h33
+            self.gaps[i] = self.htdiv20
+            if i < 9:
+                self.removedsuit[i] = 0
+
+
+    def history(self, fromrow, fromcolumn, oldrow, oldcolumn, dot):  # ; // History, to enable Undo
+        if oldcolumn > -1:
+            self.historycount = self.historycount + 1
+            if self.historycount == self.historysize + 1:
+                self.historycount = 1
+
+            self.histrec[self.historycount] = (oldrow, oldcolumn, fromrow, fromcolumn, dot)
+
+    def find0(self, row, col80):
+        col = col80  # // 80
+        row2 = row
+        while self.cardsarray[row2, col, 0] != 0:
+            row2 = row2 + 1
+        return row2
+
+    def difficult(self, difficulty):
+        self.difficulty = 9 - difficulty
+
+        self.new()
+
+
+    def shuffle(self):   #      2 pack deck before shuffle
+        n = 0
+        for i in range(1, 5):  # to 4
+            m = 13 * (i - 1)
+            for j in range(1, 14):
+                n = n + 1
+                self.card[n] = n
+                self.cds[m + j] = j
+                self.newdig[j] = 0
+        cdsleft = 52
+        cdstrt = 1
+        n = 78  #  random.randint(0, 100)  #78,45,1,22,27,43,80,84,31,46,84,49,90,89,28,16,60,51,22,6,27,77,87,96,48
+    #    print(n)
+        random.seed(n)
+        while cdsleft > 0:
+            newrand = 0
+            while newrand == 0:
+                n = random.randint(0, cdsleft - 1) + 1
+                u = self.card[n] % 13 + 1   # card[n] is original ordered pack
+                if cdsleft > 51 - self.difficulty:
+                    if self.newdig[u] > 0:
+                        newrand = 0
                     else:
-                        # Try moving to matching sequence
-                        to_row = self.lastcard[to_col]
-                        if (self.cardsarray[to_row, to_col, 0] == card_rank + 1 and
-                            self.cardsarray[to_row, to_col, 1] == card_suit):
-                            if self.auto_move(from_row, from_col):
-                                moved = True
-                                break
+                        self.newdig[u] = u   #  selects first n cards to be different
+                        newrand = 1
+                        self.dack[cdstrt] = self.card[n]
+
+                        self.card[n] = self.card[cdsleft]
+                        cdsleft = cdsleft - 1
+                        cdstrt = cdstrt + 1
+
+
+                    newrand=1
+                else:
+
+                    self.dack[cdstrt] = self.card[n]   # selects later cards from pack
+                    self.card[n] = self.card[cdsleft]
+                    cdsleft = cdsleft - 1
+                    cdstrt = cdstrt + 1
+                    newrand = 1
+
+    #    @u, 140 say u & & picture "99.999" & & cds(n)
+    #    *wait
+    #    for k in range(1, 53):
+    #        dack[k + 52] = dack[k]   # dack[] is shuffled pack *2
+        for k in range(1, 53):  #  105
+            self.dck[k] = self.dack[k]
+            self.dck[k + 52] = self.dack[k]
+
+        for k in range(1, 11):
+            self.dck[64 + k] = self.dck[k + 44]  # dack[k+44]  # 54 instead of 64
+            self.dck[44 + k] = self.dack[k]  # initial exposed cards
+            self.dck[k] = self.dack[k + 12]  #  64
+
+    #for  test
+        self.dck = [0,49,43,22,44,23,13,37,17,6,30,32,50,49,43,22,44,23,13,37,17,6,30,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,25,36,15,10,20,34,39,26,27,2,15,10,20,34,39,26,27,2,32,50,9,38,12,14,31,46,18,11,25,36,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,9,38,12,14,31,46,18,11]
+
+
+    #  def commencedeal():
+        self.nextcard = 0
+        for jl in range(10):  # to 9 do
+            il = self.rowbase
+            while self.cardsarray[il, jl, 0] > 0:
+                self.cardsarray[il, jl, 0] = 0  # card space empty
+
+                il = il + 1
+            il = self.rowbase
+            while il < 80:
+                self.colms[il, jl] = self.h33 * (il - self.rowbase) + self.rowbase          # set card display spacing
+                il = il + 1
+            if jl < 4:
+
+                self.lastcard[jl] = self.rowbase + 5
+            else:
+                self.lastcard[jl] = self.rowbase + 4
+        rowdepth = self.rowbase
+        while rowdepth < self.rowbase + 7:
+            for jl in range(10):
+                jlo = jl
+
+                if self.nextcard < 44 or (self.nextcard < 54 and rowdepth == self.rowbase + 7):
+                    self.cardsarray[rowdepth, jlo, 0] = self.facedown
+                    self.caxsx[rowdepth, jlo, 0] = self.dck[self.nextcard + 1] % 13 + 1
+                    self.caxsx[rowdepth, jlo, 1] = self.dck[self.nextcard + 1] % 4 + 1
+                    self.nextcard = self.nextcard + 1
+                elif self.nextcard < 54:
+    #                cardsarray[rowdepth, jl] = dck[nextcard]
+                    self.cardsarray[rowdepth, jl, 0] = self.dck[self.nextcard + 1] % 13 + 1
+                    self.cardsarray[rowdepth, jl, 1] = self.dck[self.nextcard + 1] % 4 + 1
+                    self.nextcard = self.nextcard + 1
+
+            rowdepth = rowdepth + 1
+
+    def tencards(self):
+        if self.it < 10:
+            tenct = self.lastcard[self.it]  #  find0(tenct, it80)
+
+            self.cardsarray[tenct + 1, self.it, 0] = self.dck[self.nextcard + 1] % 13 + 1
+            self.cardsarray[tenct + 1, self.it, 1] = self.dck[self.nextcard + 1] % 4 + 1
+
+            self.lastcard[self.it] = tenct + 1
+            
+            self.nextcard = self.nextcard + 1  # end; // End   Deals another 10 cards
+            self.it = self.it + 1
+
+    def stackclick(self):   #  Deals another 10 cards
+        self.oldr = -1
+        if self.dealnext10 < 5:
+            self.newtencards = 1
+
+            self.joinz()
+            for self.it in range(10):
+    #        it = 0
+                self.tencards()
+    #            timedelay()
+
+            self.newtencards = 0
+            self.dealnext10 = self.dealnext10 + 1
+
+            self.history(0, 0, 0, 1, 0)
+
+    def undoes(self):
+        if self.historycount > 0:
+            self.oldrow, self.oldcolumn, self.fromrow, self.fromcolumn, dot = self.histrec[self.historycount]
+
+            if (self.oldcolumn > 9) and (self.oldrow == -1):
+                self.oldrow = self.oldrow
+            else:
+                self.historycount = self.historycount - 1
+
+            kkk = 0
+            if (dot == 1) and(self.fromrow + kkk > self.rowbase):  #  (dot == 1) and     310821
+    #            dot = 0
+
+    #            rowfordisplay = fromrow + kkk - 1
+    #            columnfordisplay = fromcolumn
+                self.cardsarray[self.fromrow + kkk - 1, self.fromcolumn, 0] = self.facedown
+
+            if (self.oldrow == 0) and (self.oldcolumn == 1):
+                self.dealnext10 = self.dealnext10 - 1
+
+                for jm in range(10):       # undo deal10
+
+                    i = jm
+
+                    rowfordisplay = self.lastcard[i]  #find0(rowfordisplay, i80)
+
+                    columnfordisplay = i
+                    self.cardsarray[rowfordisplay, i, 0] = 0
+
+                    rowfordisplay = rowfordisplay - 1
+                    self.nextcard = self.nextcard - 1
+
+    #                lstcard(rowfordisplay, i)  #lastcard[i] = rowfordisplay - 1
+                    self.lastcard[i] = rowfordisplay
+            else:
+                if self.oldrow == 0:                   # undo removeSuit
+                    kk = 0
+                    while kk < 8 and self.removedsuit[kk] > 0:
+                        kk = kk + 1
+                    kk = kk - 1
+                    for jm in range(13):
+                        i = jm + 1
+                        self.cardsarray[self.fromrow + i - 1, self.fromcolumn, 0] = 14 - i
+                        self.cardsarray[(self.fromrow + i - 1), self.fromcolumn, 1] = self.removedsuit[kk]
+                        rowfordisplay = self.fromrow + i - 1
+                        columnfordisplay = self.fromcolumn
+                    self.lastcard[self.fromcolumn] = self.fromrow + 12
+                    #                lstcard(fromrow+12, fromcolumn)  #  lastcard[fromcolumn] = fromrow + i   #  i - 1
+                    self.removedsuit[kk] = 0
+
+                else:
+                    while (self.cardsarray[self.oldrow + kkk + 1, self.oldcolumn, 0] != 0) and (self.cardsarray[self.fromrow + kkk, self.fromcolumn, 0] == 0):
+                        self.cardsarray[self.fromrow + kkk, self.fromcolumn, 0] = self.cardsarray[(self.oldrow + kkk + 1), self.oldcolumn, 0]
+                        self.cardsarray[self.fromrow + kkk, self.fromcolumn, 1] = self.cardsarray[(self.oldrow + kkk + 1), self.oldcolumn, 1]
+                        self.cardsarray[self.oldrow + kkk + 1, self.oldcolumn, 0] = 0
+
+                        rowfordisplay = self.fromrow + kkk
+                        columnfordisplay = self.fromcolumn
+                        
+    #                    timedelay()
+                        if (self.oldcolumn > 9) and self.oldrow + kkk + 1 != 6:  # oldcolumn>9 when suit has been removed - cols 10-17
+                            rowfordisplay = self.oldrow + kkk + 1 - 1
+                        else:
+                            rowfordisplay = self.oldrow + kkk + 1
+                        columnfordisplay = self.oldcolumn
+                        
+                        kkk = kkk + 1
+    #                lstcard(fromrow + kkk - 1, fromcolumn)
+                    self.lastcard[self.fromcolumn] = self.fromrow + kkk - 1
+                    
+    #                lstcard(oldrow, oldcolumn)
+                    self.lastcard[self.oldcolumn] = self.oldrow
+
+
+    def undo(self):
+        self.oldr = -1
+        self.undoes()
+
+    def describe(self, icol):
+    #    col80 = dims[icol]
+        self.rowe = self.lastcard[icol]
+        self.suitcard[icol] = self.cardsarray[self.rowe, self.col, 1]
+        suitcardcol = self.suitcard[icol]
+        if self.cardsarray[self.rowbase, self.col, 0] > 0:
+    #        while (cardsarray[rowe, col, 1] == suitcardcol) and \
+            while (self.cardsarray[self.rowe - 1, self.col, 1] == suitcardcol) \
+                    and (self.cardsarray[self.rowe, self.col, 0] == self.cardsarray[self.rowe - 1, self.col, 0] - 1):
+                self.rowe = self.rowe - 1
+        # if cardsarray[rowbase, col, 0] == 0:
+        #     wdow.create_rectangle(760, 170 + 30 * col, 790, 280 + 30 * col, width=0, fill="Green")
+        #     wdow.create_text(780, 200 + 30 * col, fill="white", font="Times 15 bold", text=str(rowe))
+        self.firstcard[icol] = self.rowe
+
+
+    # def describe(col):
+    # #  // finds the first and last card in a particular column (col) of a
+    # #  // movable sequence of cards. A movable sequence of cards is of the same suit
+    # #  // and is in numerically descending order (such as 9,8,7,6,5).
+    #     global rowe, firstcard, lastcard, suitcard
+    #
+    #     findsuittop(col)
+
+
+    def movecards(self):  #  var     ki, kj: integer;
+        if self.col < 10 or self.col > 9:
+            oldrow = self.rowe
+            fromrow = self.jx
+            fromcolumn = self.ijj
+        #    lstcard(fromrow - 1, fromcolumn)
+            self.lastcard[fromcolumn] = fromrow - 1
+    #        lastcard[fromcolumn] = find0(rowbase - 1, fromcolumn) - 1
+            if self.lastcard[fromcolumn] != fromrow - 1 or fromcolumn > 9:
+                fromrow = fromrow
+            while self.cardsarray[self.jx, fromcolumn, 0] != 0:
+                self.rowe = self.rowe + 1
+
+                self.cardsarray[self.rowe, self.col, 0] = self.cardsarray[self.jx, fromcolumn, 0]
+                self.cardsarray[self.rowe, self.col, 1] = self.cardsarray[self.jx, fromcolumn, 1]
+                self.cardsarray[self.jx, fromcolumn, 0] = 0  # // show vacant space after card has been moved
+                self.jx = self.jx + 1
+            self.movecol = 1
+
+        #    lstcard(rowe, col)
+            self.lastcard[self.col] = self.rowe
+            
+            dot = 0
+            if self.cardsarray[fromrow - 1, fromcolumn, 0] > 0:
+                if self.cardsarray[fromrow - 1, fromcolumn, 0] == self.facedown:  # // flip card when no longer covered by another card
+                    dot = 1
+                    self.cardsarray[fromrow - 1, fromcolumn, 0] = self.caxsx[fromrow - 1, fromcolumn, 0]
+                    self.cardsarray[fromrow - 1, fromcolumn, 1] = self.caxsx[fromrow - 1, fromcolumn, 1]
                 
-                if moved:
-                    break
+            self.history(fromrow, fromcolumn, oldrow, self.col, dot)  # // history is stored to allow future undo
             
-            # If no moves found, deal more cards if possible
-            if not moved and self.dealnext10 < self.INITIAL_DEALS:
-                self.deal_cards()
-                moved = True
-        
-        return self.get_game_state()
-    
-    def undo_move(self) -> GameState:
-        """Undo the last move matching original game logic"""
-        if self.historycount <= 0:
-            raise ValueError("No moves to undo")
-        
-        # Get the last move (using circular buffer)
-        hist_index = (self.historycount - 1) % self.HISTORY_SIZE
-        move_details = self.histrec[hist_index]
-        
-        if move_details is None:
-            raise ValueError("Invalid move history")
-        
-        if move_details['type'] == 'move':
-            # Undo a card movement
-            for card_data in reversed(move_details['cards_moved']):
-                # Move cards back to original position
-                self.cardsarray[card_data['from_row'], card_data['from_col'], 0] = card_data['rank']
-                self.cardsarray[card_data['from_row'], card_data['from_col'], 1] = card_data['suit']
-                self.card_ids[card_data['from_row'], card_data['from_col']] = card_data['id']
-                
-                # Clear destination position
-                self.cardsarray[card_data['to_row'], card_data['to_col']] = 0
-                self.card_ids[card_data['to_row'], card_data['to_col']] = None
+            self.describe(self.col)
+            self.col = fromcolumn
+            self.describe(self.col)
+
+        #    jx = col
+        #    sollve = wdow.after(50, movecards)
+        #    bottom.mainloop
+
+
+    def joinsuits(self):
+        self.jmov = 1
+        for ijoins in range(9):
+            self.iijoins = -1
+            self.ijoins = 0
+            while self.jmov == 1:
+                self.jmov = 0
+                self.joins()
+
+    def joins(self):
+        self.iijoins = self.iijoins + 1
+        if self.iijoins == 10:
+            self.ijoins = self.ijoins + 1
+            self.iijoins = 0
+        if self.ijoins < 10:
+            if ((self.iijoins != self.ijoins) and (self.suitcard[self.ijoins] == self.suitcard[self.iijoins]) and
+                    (self.cardsarray[self.firstcard[self.ijoins], self.ijoins, 0] > self.cardsarray[self.firstcard[self.iijoins], self.iijoins, 0]) and
+                    (self.cardsarray[self.lastcard[self.ijoins], self.ijoins, 0] <= self.cardsarray[self.firstcard[self.iijoins], self.iijoins, 0] + 1) and
+                    (self.cardsarray[self.lastcard[self.ijoins], self.ijoins, 0] > self.cardsarray[self.lastcard[self.iijoins], self.iijoins, 0])):
+                self.jx = 0
+                while self.cardsarray[self.firstcard[self.iijoins] + self.jx, self.iijoins, 0] >= self.cardsarray[self.lastcard[self.ijoins], self.ijoins, 0]:
+                    self.jx = self.jx + 1
+
+                self.rowe = self.lastcard[self.ijoins]
+                self.jx = self.firstcard[self.iijoins] + self.jx
+                self.col = self.ijoins
+                self.ijj = self.iijoins
+                self.movecards()
+                self.jmov = 1
+    #                    col = ii
+            else:
+                self.jmov = 1
+
+    def fillspaces(self): #   var     ijk, ij: integer;
+        self.jmov = 1
+        while self.jmov == 1:
+            self.col = 10
+            self.rowe = self.rowbase
+            self.jmov = 0
+            for ijk in range(10):
+                ijk80 = self.dims[ijk]
+                if self.cardsarray[self.rowbase, ijk, 0] == 0:
+                    self.col = ijk
+            if self.col < 10:  #  then // found empty column
+
+                if self.dealnext10 < 5:
+
+                    self.jx = 100
+                    for ij in range(10):
+                        if (self.firstcard[ij] < self.jx) and (self.firstcard[ij] > self.rowbase):
+
+                            self.jx = self.firstcard[ij]  # // gets lowest FirstCard (early on)
+                            self.ijj = ij
+                else:
+                    self.jx = self.rowbase
+                    for ij in range(10):
+                        if self.firstcard[ij] > self.jx:
+
+                            self.jx = self.firstcard[ij]
+                            self.ijj = ij  # // gets highest FirstCard (after 5 Deals of 10 cards)
+                self.rowe = self.rowbase - 1
+                if (self.jx > self.rowbase) and (self.jx != 100):
+
+                    self.movecards()
+                    self.col = self.ijj   # column with highest firstcard
+
+
+    def joinz(self):
+    #   // Start of  joinz  mainline.
+        for ijr in range(10):
+            self.col = ijr
+            self.describe(self.col)  # // gather data for each column
+        self.movecol = 1  # // suggest a move has happened previously
+        while self.movecol == 1:
+
+            self.movecol = 0  #0  #   // show no move has happened yet in this iteration
+            if self.newtencards == 0:  #    // if 10 more cards have been dealt, don't join suits.
+                self.joinsuits()
+            self.fillspaces()
+            # if displaycounter > 400:
+            #     movecol = 0
+
+    #        timedelay()
+    #        display()
+
+
+    def solve(self):  # var   iii: integer;
+    #    begin // automatically joins suit segments together, and fills empty columns.
+    #  // Fills empty columns before 10 more cards are dealt.
+    #  // Tests repeatedly until no more moves happen.            //
+        self.oldr = -1
+        self.joinz()
+
+
+    def removesuit(self, row, colum):  #   // removecompletesuit from display
+        suitremoved = 0
+
+        # if historycount == 1000:
+        #
+        #     rowfordisplay = 0
+
+        clr = self.cardsarray[row, colum, 1]
+        ij = 0
+        while self.cardsarray[(row + ij), colum, 1] == clr and ij < 13:
+            ij = ij + 1
+        if ij == 13:
+
+            ij = 0
+            while self.removedsuit[ij] > 0:  # find next icon space
+                ij = ij + 1
+            self.removedsuit[ij] = clr
+
+            self.oldcolumn = ij + 10
+
+            for ij in range(13):  #  := 1 to 13 do
+
+                self.cardsarray[row + 12 - ij, colum, 0] = 0
+
+            suitremoved = 1
+            self.lastcard[colum] = row - 1
+    #        lstcard(row - 1, colum)
+
+            if (ij == 12):
+                if self.cardsarray[row - 1, colum, 0] == self.facedown:
+                    self.displaycounter = self.displaycounter - 1
+                    self.cardsarray[row - 1, colum, 0] = self.caxsx[row - 1, colum, 0]
+                    self.cardsarray[row - 1, colum, 1] = self.caxsx[row - 1, colum, 1]
+
+                    self.dot = 1
+                elif self.cardsarray[row - 1, colum, 0] > 0:
+                    self.displaycounter = self.displaycounter - 1
+
+            self.history(row, colum, 0, self.oldcolumn, self.dot)
+        return suitremoved
+
+        #    // end proc removeSuit
+
+
+    def findledges(self, colum):  #  find ledges and count available blank columns
+    #    global blankcolumn, ledgecolumn, ledgerow, blankcolumns
+        blankcolumns = 0
+        for jl in range(22):
+            self.ledgecolumn[jl] = -1
+        for jl in range(10):
+
+    #        ll = rowbase
+    #        while cardsarray[ll, jl, 0] > 0:
+    #            ll = ll + 1
+            ll = self.lastcard[jl] + 1
+
+            i = self.cardsarray[ll - 1, jl, 0]
+            self.ledgecolumn[i] = jl
+
+            self.ledgerow[jl] = ll
+            if (ll == self.rowbase) and (jl != colum):
+
+                blankcolumns = blankcolumns + 1
+                self.blankcolumn[blankcolumns] = jl
+        return blankcolumns
+        #   // end     proc     findledges;
+
+
+    def steps(self, ia, fnd):  #   // find    available    shelves    for card movements
+        find = fnd
+        self.fromrow = self.lx[self.xa]
+        self.fromcolumn = self.ly[self.xa]
+        addr_end_fragment = self.fromrow
+        ro80 = self.dims[self.fromcolumn]
+        while self.cardsarray[addr_end_fragment, self.fromcolumn, 0] != 0:
+            addr_end_fragment = addr_end_fragment + 1
+        addr_end_fragment = addr_end_fragment - 1
+    #    addr_end_fragment = lastcard[fromcolumn]
+        self.ct = addr_end_fragment
+        self.n = 0
+        self.xa = 0
+        self.ya = 0
+        self.fragment_length = 1
+        while self.fromrow < addr_end_fragment:
+
+            while (self.ledgecolumn[self.cardsarray[addr_end_fragment, self.fromcolumn, 0] + 1] != -1) and (self.fromrow < addr_end_fragment):
+
+                self.ya = self.ya + 1
+                self.lx[self.ya] = addr_end_fragment
+                self.ly[self.ya] = self.fromcolumn
+                self.by[self.ya] = 1
+                self.lth[self.ya] = self.fragment_length
+                self.fragment_length = 1
+                addr_end_fragment = addr_end_fragment - 1
+                self.n = 0
+
+            if (self.cardsarray[addr_end_fragment, self.fromcolumn, 1] != self.cardsarray[addr_end_fragment - 1, self.fromcolumn, 1]) and (self.fromrow < addr_end_fragment):
+
+                self.n = self.n + 1
+                self.ya = self.ya + 1
+                self.lx[self.ya] = addr_end_fragment
+                self.ly[self.ya] = self.fromcolumn
+                self.by[self.ya] = 0
+                self.lth[self.ya] = self.fragment_length
+                self.fragment_length = 1
+
+            else:
+
+                if self.fromrow < addr_end_fragment:
+                    self.fragment_length = self.fragment_length + 1
+
+            if self.n > ia:
+                find = 0     #  not enough spaces, so invalidate
+            addr_end_fragment = addr_end_fragment - 1
+
+        self.ya = self.ya + 1
+        self.lx[self.ya] = self.fromrow
+        self.ly[self.ya] = self.fromcolumn
+        self.by[self.ya] = 1
+        self.lth[self.ya] = self.fragment_length
+        return find
+    #   // end proc steps;
+
+
+    def spacefind(self):  #  // find a space       var         jm: integer;
+        stopper = 0
+        jmx = 1
+        while stopper == 0 and jmx < 11:
+            if self.blankcolumn[jmx] < 10 and self.cardsarray[self.rowbase, self.blankcolumn[jmx], 0] == 0:
+                stopper = 1
+                self.oldcolumn = self.blankcolumn[jmx]
+                self.oldrow = self.ledgerow[self.oldcolumn] - 1
+            else:
+                jmx = jmx + 1
+        # // end proc spaceFind;
+
+
+    def cutstep(self):  #   // Reduce unnecessary steps
+        self.cc = self.fromrow
+        ro80 = self.dims[self.fromcolumn]
+
+        self.cc = self.lastcard[ro80]
+        self.ct = self.cc   # bottom of column
+
+        while self.ct > self.fromrow:
+
+            while (self.ct > self.fromrow) and (self.cardsarray[self.ct, self.fromcolumn, 1] == self.cardsarray[self.ct - 1, self.fromcolumn, 1]):
+                self.ct = self.ct - 1   # if same suit, can be moved like a single card
+            self.n = self.ct
+            while (self.ledgecolumn[self.cardsarray[self.n, self.fromcolumn, 0] + 1] == -1) and (self.n < self.cc):
+                self.n = self.n + 1
+            while self.n < self.cc:
+
+                self.n = self.n + 1
+                self.ledgecolumn[self.cardsarray[self.n, self.fromcolumn, 0] + 1] = -1
+
+            self.ct = self.ct - 1
+            self.cc = self.ct
+
+    #    end; // end     proc     cutstep;
+
+
+    def movecard(self):  #   // move a card(cardsArraySuit)       var         l: integer;
+        self.columnformove = self.ly[self.xa]
+        columnformove80 = self.dims[self.columnformove]
+        ru80 = self.dims[self.oldcolumn]
+
+        self.oldrow = self.find0(self.oldrow+1, ru80) - 1
+        ll = 1
+        if self.cardsarray[self.lx[self.xa] - 1, self.columnformove, 0] != self.facedown:
+            self.dot = 0
+        else:
+
+            self.cardsarray[self.lx[self.xa] - 1, self.columnformove, 0] = self.caxsx[self.lx[self.xa] - 1, self.columnformove, 0]
+            self.cardsarray[self.lx[self.xa] - 1, self.columnformove, 1] = self.caxsx[self.lx[self.xa] - 1, self.columnformove, 1]
+
+            columnfordisplay = self.fromcolumn
+            rowfordisplay = self.fromrow - 1
             
-            # Update last card positions
-            self.lastcard[move_details['from_col']] = move_details['from_row'] + len(move_details['cards_moved']) - 1
-            self.lastcard[move_details['to_col']] = move_details['to_row']
-            
-            # If a card was revealed, cover it back up
-            if move_details.get('revealed_card'):
-                rc = move_details['revealed_card']
-                self.cardsarray[rc['row'], rc['col'], 0] = self.FACEDOWN
-                self.facedown_cards[rc['row'], rc['col'], 0] = rc['rank']
-                self.facedown_cards[rc['row'], rc['col'], 1] = rc['suit']
-                self.card_ids[rc['row'], rc['col']] = rc['id']
-            
-            # If a sequence was completed, put it back
-            if move_details.get('completed_sequence'):
-                cs = move_details['completed_sequence']
-                self.completed_sequences -= 1
-                for i in range(13):
-                    row = cs['row'] + i
-                    col = cs['col']
-                    self.cardsarray[row, col, 0] = cs['top_rank'] - i
-                    self.cardsarray[row, col, 1] = cs['suit']
-                    self.card_ids[row, col] = f"reconstructed-{row}-{col}"
-                self.lastcard[col] = cs['row'] + 12
-                
-                # Remove from removedsuit tracking
-                for i in range(9):
-                    if self.removedsuit[i] == cs['suit']:
-                        self.removedsuit[i] = 0
-                        break
+            self.dot = 1
+            self.dott = 1
+        rowfordisplay = self.lx[self.xa]
+        columnfordisplay = self.columnformove
+
+        while ll < self.lth[self.xa] + 1:
+
+            lxxal = rowfordisplay + ll
+
+            self.cardsarray[self.oldrow + ll, self.oldcolumn, 0] = self.cardsarray[(lxxal - 1), self.columnformove, 0]
+            self.cardsarray[self.oldrow + ll, self.oldcolumn, 1] = self.cardsarray[(lxxal - 1), self.columnformove, 1]
+            self.cardsarray[lxxal - 1, self.columnformove, 0] = 0
+
+            ll = ll + 1
+
+        movesize = ll - 1
         
-        elif move_details['type'] == 'deal':
-            # Undo a card deal
-            for card in reversed(move_details['cards_dealt']):
-                self.cardsarray[card['row'], card['col']] = 0
-                self.card_ids[card['row'], card['col']] = None
-                self.nextcard -= 1
-            
-            # Restore last card positions
-            self.lastcard = move_details['lastcards_before'].copy()
-            self.dealnext10 -= 1
+        rowfordisplay = self.oldrow + 1
+        columnfordisplay = self.oldcolumn
+
+        self.lx[self.xa] = self.oldrow + 1
+        self.ly[self.xa] = self.oldcolumn
+
+
+    def mptyshlf(self):  #   // empty temporary shelf
+        self.spacefind()
+        self.movecard()
+        if self.blanks_program[self.xa] == 1:
+
+            self.oldrow = self.oldrow + self.lth[self.xa]
+            self.xa = self.xa - 1
+            self.movecard()
+            self.xa = self.xa + 1
+
+        if self.blanks_program[self.xa] == 2:
+
+            self.oldrow = self.oldrow + self.lth[self.xa]
+            self.xa = self.xa - 1
+            self.movecard()
+            self.xa = self.xa - 2
+            self.spacefind()
+            self.movecard()
+            self.xa = self.xa + 1
+            self.oldcolumn = self.ly[self.xa + 1]
+            self.oldrow = self.lx[self.xa + 1] + self.lth[self.xa + 1] - 1
+            self.movecard()
+            self.oldrow = self.oldrow + self.lth[self.xa]
+            self.xa = self.xa - 1
+            self.movecard()
+            self.xa = self.xa + 3
+
+        if self.blanks_program[self.xa] == 3:
+
+            self.oldrow = self.lx[self.xa - 4] + self.lth[self.xa - 4] - 1
+            self.oldcolumn = self.ly[self.xa - 4]
+            self.xa = self.xa - 5
+            self.movecard()
+            self.xa = self.xa + 5  #       // end proc mptyshlf;
+
+
+    def fillshlf(self):  #   // fill temporary shelf
+        self.oldrow = self.lastcard[self.oldcolumn]
+        self.xa = self.xa - 1
+        if self.blanks_program[self.xa] == 1:
+
+            self.xa = self.xa - 1
+            self.spacefind()
+            self.movecard()
+            self.xa = self.xa + 1
+
+        if self.blanks_program[self.xa] == 2:
+
+            self.xa = self.xa - 3
+            self.spacefind()
+            self.movecard()
+            self.xa = self.xa + 1
+            self.spacefind()
+            self.movecard()
+            self.oldrow = self.oldrow + self.lth[self.xa]
+            self.xa = self.xa - 1
+            self.movecard()
+            self.xa = self.xa + 2
+            self.spacefind()
+            self.movecard()
+            self.xa = self.xa + 1
+
+        if self.blanks_program[self.xa] == 3:
+
+            self.xa = self.xa - 5
+            self.spacefind()
+            self.movecard()
+            self.xa = self.xa + 5
+
+        self.oldcolumn = self.ly[self.xa + 1]
+        self.oldrow = self.lx[self.xa + 1] + self.lth[self.xa + 1] - 1
+        self.movecard()
+        self.oldrow = self.oldrow + self.lth[self.xa]  #   // end proc fillshlf;
+
+
+    def repeatcol(self):
+        blnk = -1
+        masthead = -1
+        if self.oldr != self.column or self.oldc != self.fromrow:  # oldr, oldc are previous destination addr
+            self.repsuity = -1
+            for jl in range(10):
+                self.colmoves[jl] = 0
+    #            if lastcard[jl] == rowbase - 1:
+    #                blnk = jl
+            reprank = self.cardsarray[self.fromrow, self.column, 0] + 1
+            repsuit  = self.cardsarray[self.fromrow, self.column, 1]
+            self.oldmasthead = self.column
+    #        colmoves[column] = 2
+    #        masthead = -1
+            k = self.column + 1
+            if k == 10:
+                k = 0
+            while k != self.column:
+                j = self.lastcard[k]
+                if j == 4:
+                    blnk = k
+                else:
+                    m = self.cardsarray[j, k, 0]
+                    if m == reprank:  # and masthead == -1:
+                        masthead = k
+                        self.colmoves[k] = 1
+                        if self.repsuity == -1 and self.cardsarray[j, k, 1] == repsuit:
+                            self.repsuity = k
+                k = k + 1
+                if k == 10:
+                    k = 0
+
+    #        colmoves[column] = 3
+            if self.repsuity > -1:
+                masthead = self.repsuity
+            if masthead > -1:
+                if self.fromrow == 5:
+                    self.colmoves[self.column] = 0
+
+                self.colmoves[masthead] = 2
+                return masthead  # succesful column (colmove) = 2, others = 1
+    #        elif blnk > -1:
+    #            colmoves[blnk] = 2
+            return blnk
+
+        else:   # same card was clicked again
+            self.repsuity = -1
+            blnk = -1
+            k = self.lastcard[self.oldmasthead]
+            if self.cardsarray[self.fromrow, self.column, 0] == self.cardsarray[k, self.oldmasthead, 0] - 1:
+                self.colmoves[self.oldmasthead] = 1  # original move is a valid return. Its colmove = 1
+
+            k = self.column -1
+            if k == -1:
+                k = 9
+            j = 0
+            while j != 9:  # and masthead == -1:  #  find other valid destination
+
+                if self.lastcard[k] == self.rowbase -1: # and fromrow != rowbase:
+                    blnk = k  # vacant column
+                if self.colmoves[k] == 1:
+                    if masthead == -1:
+                        self.colmoves[k] = 2
+                        masthead = k
+                k = k -1
+                if k == -1:
+                    k = 9
+                j = j + 1
+            if masthead > -1:
+                if self.lastcard[self.oldmasthead] > 4:  # 5
+                    self.oldmasthead = masthead
+                    self.colmoves[k] = 2  # found another shelf but not an empty column
+                return masthead
+            else:  # need to find an empty column
+                if self.fromrow == self.rowbase:
+                    blnk = -1
+                k = -1
+                if blnk > -1: # and lastcard[blnk] != rowbase -1: # and colmoves[blnk] != 3:
+                    for jl in range(10):
+                        if self.colmoves[jl] == 2:
+                            self.colmoves[jl] = 1
+                            k = jl
+                    return blnk
+                # while k < 10:
+                #     k = oldmasthead - 1
+                for jl in range (10):
+                    if self.colmoves[jl] == 2 and jl != self.column:
+                        self.colmoves[jl] = 1
+
+                        self.oldmasthead = jl
+
+                if self.oldmasthead > -1:
+
+                    return self.oldmasthead
+                else:
+                    return blnk
+
+
+    def autos(self, row):   #// start proc autos;   // calculate path for card movements
+        xi = np.zeros(shape=23, dtype='int32')  # [0] * 23
+        self.suitremoved = 0         # show whole suit not removed
+        kill = 0                # show move valid so far
+        ia = 0
+        colautostart = self.column          # clicked column
+        r80 = self.dims[self.column]
+        rowautostart = row
         
-        self.historycount -= 1
-        return self.get_game_state()
-    
+        if self.cardsarray[self.rowbase, self.column, 0] != 0:   #  is column blank?
+            ia = self.lastcard[r80]
+            samesuitlgth = 1
+            self.cc = row
+            samesuit = self.cardsarray[self.cc, self.column, 1]   #  set suit
+            while self.cc < ia and self.cardsarray[self.cc + 1, self.column, 0] + 1 == self.cardsarray[self.cc, self.column, 0]:
+                samesuitlgth = samesuitlgth + 1
+                self.cc = self.cc + 1  #   check whether lower cards are in numerical sequence and
+                if self.cardsarray[self.cc, self.column, 1] != samesuit:
+                    samesuit = 0
+            if self.cc != ia:    # if not, invalidate the move
+                kill = 1
+
+            if ia - row == 12 and kill == 0:
+                self.suitremoved = self.removesuit(row, self.column)  #    // test whether can remove completed suit of 13
+            if self.suitremoved == 1:
+                self.column = -1       # suit removed, so therefore invalidate further processing of click
+                kill = 1
+        else:
+    #        row = row
+            kill = 1
+    #    if ((row != oldc) or (column != oldr)) and column != -1:  # if there is more than one valid destination, reset so
+    #        for ijjj in range(10):                               # oldr, oldc is immediately preceding move - to be avoided
+    #            usedcolumns[ijjj] = 0        26/10/2022
+
+        self.fromrow = row  #   // fromrow,fromcolumn is addr of card to be moved
+        self.fromcolumn = self.column
+        fromrank = self.cardsarray[self.fromrow, self.fromcolumn, 0]
+
+    #    fromsuit = cardsarray[fromrow, fromcolumn, 1]
+    #    rankjoin = -1          # indicator for valid destination regardless of suit
+
+    #    samesuitjoin = -1         # indicator for valid destination of same suit
+        if kill == 0:
+
+            self.column = self.repeatcol()  #  finds a column for clicked card to move to. rankjoin will equal that column, samesuitjoin if same suit
+    #        print(colmoves)
+    #        if rankjoin > -1:
+    #            column = rankjoin
+
+        r80 = self.dims[self.column]
+        if self.column == -1:  #         // no possible destination for cardsArrayRank[fromrow,fromcolumn]
+            kill = 1
+
+        else:
+
+            if self.cardsarray[self.rowbase, self.column, 0] == 0:  # empty column
+                row = self.rowbase - 1
+
+                cji = self.facedown  # used for later testing
+            else:
+                row = self.lastcard[r80]
+                cji = self.cardsarray[row, self.column, 0] - 1
+
+            if (row > self.rowbase - 1) or (self.cardsarray[self.fromrow, self.fromcolumn, 0] == 0):
+
+                ct = self.fromrow
+            if ((self.cardsarray[self.fromrow, self.fromcolumn, 0] == cji) or (self.cardsarray[row, self.column, 0] == 0)) and (kill == 0):
+                found = 1  # a destination for the card(s) may be a blank column
+    #
+            else:
+                kill = 1   #  invalidate
+                found = 0
+            if self.suitremoved == 1:
+                found = 0
+            if found == 1:
+
+                self.dott = 0
+                blankcolumns = self.findledges(self.column)   #  find available empty working columns
+                self.ledgecolumn[self.cardsarray[self.fromrow, self.fromcolumn, 0] + 1] = self.column
+    #
+                ia = blankcolumns * blankcolumns - blankcolumns + 1  #  // dynamic potential of blank columns
+
+                if blankcolumns == 0:
+                    ia = 0
+                self.cc = self.fromrow
+    #           n = 1
+                while self.cc <= self.ct:
+                    self.cc = self.cc + 1
+    #                n = n + 1
+                self.xa = 1
+
+                self.lx[self.xa] = self.fromrow
+                self.ly[self.xa] = self.fromcolumn
+
+                self.cutstep()     # find all the ledges and blank columns
+                found = self.steps(ia, found)            # necessary to move the card(s)
+
+                if self.ya > 1 and self.totya < self.steplimit + 1:
+                    self.totya = self.totya + self.ya
+
+                if found == 0:
+    #                print(n, ia, found)
+                    kill = 1                  # not enough spaces so invalidate
+    #                masthead = -1
+    #                usedcs()
+
+                if found == 1:
+                    self.oldc = row + 1  #  save valid destination in case there are more destinations for later attempts
+                    self.oldr = self.column
+    #                if cardsarray[fromrow - 1, fromcolumn, 0] == cardsarray[fromrow , fromcolumn, 0] + 1:
+    #                    usedcolumns[fromcolumn] = 2
+                short = self.lastcard[self.fromcolumn] - self.fromrow + 1
+                if found == 1:
+    #                oldrankjoin = row + 1
+    #                oldcolumnjoin = column
+    #                if samemove == 1 and totya < steplimit + 1:  #  if cards to be moved are all the same suit
+    #                if totya < steplimit + 1:  #  if cards to be moved are all the same suit
+                    if samesuit != samesuit:
+                        ijjj = 0
+                        while ijjj < short:
+                            self.cardsarray[row + 1 + ijjj, self.column, 0] = self.cardsarray[self.fromrow + ijjj, self.fromcolumn, 0]
+                            self.cardsarray[row + 1 + ijjj, self.column, 1] = self.cardsarray[self.fromrow + ijjj, self.fromcolumn, 1]
+                            
+                            self.cardsarray[self.fromrow + ijjj, self.fromcolumn, 0] = 0
+                            ijjj = ijjj + 1
+
+                        if self.cardsarray[self.fromrow - 1, self.fromcolumn, 0] == self.facedown:
+                            self.cardsarray[self.fromrow - 1, self.fromcolumn, 0] = self.caxsx[self.fromrow - 1, self.fromcolumn, 0]
+                            self.cardsarray[self.fromrow - 1, self.fromcolumn, 1] = self.caxsx[self.fromrow - 1, self.fromcolumn, 1]
+                            
+                            self.dot = 1
+                            self.dott = 1
+                        else:
+                            dot = 0
+                        self.lastcard[self.column] = self.lastcard[self.column] + short
+                        self.lastcard[self.fromcolumn] = self.lastcard[self.fromcolumn] - short
+                        self.tidyup()
+                        self.history(self.fromrow, self.fromcolumn, row, self.column, self.dot)
+    #                    if dot == 1:
+
+                    else:
+                        for jk in range(1, self.ya+1):  #   Prepare tables to enable moving the cards
+                            self.blanks_program[jk] = 0
+                            xi[jk] = 0
+                        yy = self.ya
+                        self.by[0] = 1
+                        self.ly[0] = 10
+                        self.xa = 1
+                        while self.xa < self.ya:
+                            j = 0
+                            ia = 0
+                            while self.by[self.xa] == 0:
+                                ia = ia + 1
+                                j = j + self.lth[self.xa]
+                                xi[ia] = self.xa
+                                self.xa = self.xa + 1
+                            if ia == blankcolumns + 1:   # set up program for dynamic use of blank columns
+                                self.blanks_program[xi[2]] = 1
+                            elif ia == blankcolumns + 2:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 1
+                            elif ia == blankcolumns + 3:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 2
+                            elif ia == blankcolumns + 4:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 2
+                                self.blanks_program[xi[6]] = 1
+                            elif ia == blankcolumns + 5:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 2
+                                self.blanks_program[xi[6]] = 1
+                                self.blanks_program[xi[8]] = 1
+                            elif ia == blankcolumns + 6:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 2
+                                self.blanks_program[xi[6]] = 1
+                                self.blanks_program[xi[8]] = 2
+                            elif ia == blankcolumns + 7:
+                                self.blanks_program[xi[2]] = 1
+                                self.blanks_program[xi[4]] = 2
+                                self.blanks_program[xi[6]] = 1
+                                self.blanks_program[xi[8]] = 2
+                                self.blanks_program[xi[10]] = 1
+                            elif ia == (blankcolumns + 8):
+                                self.blanks_program[xi[3]] = 1
+                                self.blanks_program[xi[5]] = 2
+                                self.blanks_program[xi[6]] = 3
+                                self.blanks_program[xi[7]] = 1
+                                self.blanks_program[xi[9]] = 2
+                                self.blanks_program[xi[11]] = 1
+                            self.xa = self.xa + 1
+
+                        self.xa = 0
+                        while self.xa < yy:
+                            self.xa = self.xa + 1
+                            columnformove = self.dims[self.ly[self.xa]]  #// 80
+                            self.oldcolumn = self.ledgecolumn[self.cardsarray[self.lx[self.xa], columnformove, 0] + 1]
+                            if self.oldcolumn == -1:
+                                self.mptyshlf()
+                            else:
+                                self.oldrow = self.ledgerow[self.oldcolumn] - 1
+                                self.movecard()
+                                self.oldrow = self.oldrow + self.lth[self.xa]
+                                xxx = self.xa
+                                while self.by[self.xa - 1] == 0:
+                                    self.fillshlf()
+                                self.xa = xxx
+                        olru = self.oldcolumn
+                        olcu = self.oldrow
+                        while self.xa > 0:
+                            while (self.xa > 0) and (self.ly[self.xa] == self.oldcolumn):
+                                self.xa = self.xa - 1
+                            xx = self.xa
+                            if (self.xa > 0) and (self.ly[self.xa] != self.ly[self.xa - 1]):
+                                self.oldcolumn = olru
+                                ru80 = self.dims[self.oldcolumn]
+                                self.oldrow = olcu
+                                self.oldrow = self.lastcard[ru80]
+                                self.movecard()
+                                
+                                self.oldrow = self.oldrow + self.lth[self.xa]
+                            else:
+                                if self.xa > 0:
+                                    while (self.ly[xx] == self.ly[self.xa]) and (self.xa > 0):
+                                        self.xa = self.xa - 1
+                                    self.xa = self.xa + 1
+                                    while self.xa < xx:
+                                        self.mptyshlf()
+                                        
+                                        self.xa = self.xa + 1
+                                    self.oldcolumn = olru
+                                    ru80 = self.dims[self.oldcolumn]
+                                    self.oldrow = olcu
+
+                                    self.oldrow = self.lastcard[ru80]
+                                    self.movecard()
+                                    
+                                    self.oldrow = self.oldrow + self.lth[self.xa]
+                                    while self.by[self.xa - 1] == 0:
+                                        self.fillshlf()
+                                    
+                                    self.oldcolumn = olru
+                        self.lastcard[self.column] = self.lastcard[self.column] + self.lastcard[colautostart] - self.fromrow + 1
+                        self.lastcard[self.fromcolumn] = self.fromrow - 1
+                        self.tidyup()
+            #             if cardrownumber > colsize:
+            #                 h33t30cardrownumber = h33t30 // cardrownumber
+            #                 expandcolumn(rowbase, column,
+            #                              h33t30cardrownumber)  # ht // cardrownumber + rowbase)   ht * 6  30
+            #                 compressor[column] = h33t30cardrownumber
+            #             else:
+            #                 if compressor[column] > h33:
+            #                     expandcolumn(rowbase, column, h33)
+            #                     compressor[column] = h33
+
+                        self.n = 1
+                        self.cc = row
+                        if found == 1:
+
+                            if self.suitremoved == 0:
+                                self.history(self.fromrow, self.fromcolumn, row, self.oldcolumn, self.dott)
+                # else:
+                #     usedcs()
+                #     samemove = 0
+
+
+    #                 end proc autos;
+        if kill == 1:  # if move found to be invalid
+            if self.expander == 10:  # if column not expanded, show a red alert
+                rowfordisplay = rowautostart
+                columnfordisplay = colautostart
+                self.redalert = 1
+
+    def tidyup(self):
+    #    return
+    #     #                lstcard(lastcard[column] + lastcard[colautostart] - fromrow + 1, column)  # lastcard[column] = lastcard[column] + lastcard[colautostart] - fromrow + 1
+    #
+    #           oldcolumn = column
+    #           oldrow = row
+        # cardrownumber = lastcard[fromcolumn]
+        # if cardrownumber > colsize:
+        #     h33t30cardrownumber = h33t30 // cardrownumber
+        #     expandcolumn(rowbase, fromcolumn, h33t30cardrownumber)  # ht // cardrownumber + rowbase)   ht * 6  30
+        #     compressor[fromcolumn] = h33t30cardrownumber
+        # else:
+        #     if compressor[fromcolumn] > h33:
+        #         expandcolumn(rowbase, fromcolumn, h33)
+        #         compressor[fromcolumn] = h33
+        cardrownumber = self.lastcard[self.column]
+        if cardrownumber > self.colsize:
+            h33t30cardrownumber = self.h33t30 // cardrownumber
+            self.compressor[self.column] = h33t30cardrownumber
+        else:
+            if self.compressor[self.column] > self.h33:
+                self.compressor[self.column] = self.h33
+
+        if self.dott == 1:
+            dot = 1
+    #
+
+    def cardfrontclick(self, rw, cl):  #  (ACard: TFunnelWebPlayingCard);var   lcoordinates: TRowAndColumn;
+        #    // start procedure TExampleForm.CardFrontClick(ACard: TFunnelWebPlayingCard);
+        self.column = cl   #  column
+        row = rw + self.rowbase - 1   #  row
+        ia = row
+        cardcolumn = cl
+        r80 = self.dims[cl]
+        ia = self.lastcard[cl] + 1  #  = find0(ia, r80)  # find address of bottom card plus 1
+        self.endptr = ia
+        if self.compressor[cl] == self.h33:
+    #    if ia < colsize + 1:  #   if < 30 cards in column
+            self.autos(row)  #   //compute whether move legal
+        else:
+            if row > ia-2 or self.cardsarray[row, cl, 0] == self.facedown:  # if bottom card clicked or blank column
+                self.autos(row)  # then process
+            else:
+                self.expander = cardcolumn   #  note column to be expanded
+                if ia > row+13:   # if clicked card not within 13 of bottom card
+                    ia = row   #  // show where expansion will start
+                else:
+                    ia = ia-13  # //2;    # else bottom 13 cards will be expanded
+                self.ilptr = ia   # store pointer to start of expansion
+    #            i80 = expander * 80
+
+                il = ia                # set counter  1682-1692 indented 07/12/23
+                cardcolumn80 = cardcolumn * 80
+                self.gaps[cardcolumn] = self.htdiv20    # set gap for expansion to the form height divided by 20
+                while self.cardsarray[il, cardcolumn, 0] > 0:  #  reset the form array pointers to allow expansion
+                    self.colms[il, cardcolumn] = self.gaps[cardcolumn] * (il - ia) + self.htx3div10
+                    il = il + 1
+                il = ia          #  set counter
+                while self.cardsarray[il, cardcolumn, 0] > 0 and il < ia + 14:   # store expansion until display
+                    il = il + 1
+
+        self.suitremoved = 0
+
+    def new_game(self, difficulty):
+        for jm in range(17):
+
+            if jm < 10:
+                self.dims[jm] = jm  # * 80
+    #            u[jm] = 1
+            else:
+                self.dims[jm] = 0
+    #            u[jm] = 3
+        # difficulty = 9  # 4-9   9 is easiest
+
+        self.difficult(difficulty)
+
     def get_game_state(self) -> GameState:
-        """Return current game state as Pydantic model"""
+        # Convert cardsarray to piles
         piles = []
-        for col in range(10):
-            cards = []
-            row = self.ROWBASE
-            while row < 80 and self.cardsarray[row, col, 0] > 0:
-                is_facedown = self.cardsarray[row, col, 0] == self.FACEDOWN
-                card_id = self.card_ids[row, col]
+        for col in range(10):  # There are 10 columns in spider solitaire
+            pile_cards = []
+            row = self.rowbase
+            last_card_index = -1  # Will store the index of the last movable card
+
+            while row < 80 and self.cardsarray[row, col, 0] != 0:  # 0 means no card
+                rank = self.cardsarray[row, col, 0]
+                suit = self.cardsarray[row, col, 1]
+                face_up = True if rank != self.facedown else False
                 
-                cards.append(Card(
-                    rank=self.cardsarray[row, col, 0] if not is_facedown else self.facedown_cards[row, col, 0],
-                    suit=self.cardsarray[row, col, 1] if not is_facedown else self.facedown_cards[row, col, 1],
-                    is_face_up=not is_facedown,
-                    id=card_id
-                ))
+                if face_up:
+                    # For face-up cards, use the actual rank and suit
+                    pile_cards.append(Card(rank=rank, suit=suit, is_face_up=True, id=str(uuid4())))
+
+                    if row == self.lastcard[col]:
+                        last_card_index = len(pile_cards)
+                else:
+                    # For face-down cards, we don't know the actual rank/suit yet
+                    # But we can get them from caxsx if needed
+                    pile_cards.append(Card(rank=0, suit=0, is_face_up=False, id=str(uuid4())))
+                
                 row += 1
-                
-            piles.append(Pile(
-                cards=cards,
-                last_card_index=self.lastcard[col]
-            ))
+
+            # If no face-up cards found, set last_card_index to -1
+            if last_card_index == -1 and pile_cards:
+                last_card_index = len(pile_cards) - 1 if pile_cards[-1].is_face_up else -1
+
+            piles.append(Pile(cards=pile_cards, last_card_index=last_card_index))
         
-        # Create stock (remaining cards)
-        stock = []
-        for card_pos in range(self.nextcard, 104):
-            stock.append(Card(
-                rank=self.deck[card_pos] % 13 + 1,
-                suit=self.deck[card_pos] % 4 + 1,
-                is_face_up=False,
-                id=f"stock-{card_pos}"
-            ))
+        # Calculate remaining stock (cards not yet dealt)
+        stock_cards = []
+        remaining_cards = 104 - self.nextcard  # Total cards in 2 decks minus dealt cards
+        if remaining_cards > 0:
+            # We don't know the order of remaining cards, but we know how many are left
+            # For simplicity, we'll just indicate there are remaining cards without details
+            stock_cards.append(Card(rank=0, suit=0, is_face_up=False, id=str(uuid4())))
+        
+        # Count completed sequences (removed suits)
+        completed_sequences = 0
+        for suit in self.removedsuit:
+            if suit > 0:
+                completed_sequences += 1
+        
+        # Calculate remaining draws (each draw is 10 cards)
+        draws_remaining = 5 - self.dealnext10
         
         return GameState(
             piles=piles,
-            stock=stock,
-            completed_sequences=self.completed_sequences,
+            stock=stock_cards,
+            completed_sequences=completed_sequences,
             moves=self.historycount,
-            difficulty=9 - self.difficulty,
-            draws_remaining=self.INITIAL_DEALS - self.dealnext10
+            difficulty=9 - self.difficulty,  # Convert internal difficulty to external
+            draws_remaining=draws_remaining
         )
 
 # Singleton game instance
