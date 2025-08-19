@@ -5,7 +5,6 @@ class Card(BaseModel):
     rank: int
     suit: int
     is_face_up: bool
-    id: str
 
 class Pile(BaseModel):
     cards: List[Card]

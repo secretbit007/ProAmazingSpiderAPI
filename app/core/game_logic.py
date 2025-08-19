@@ -145,7 +145,7 @@ class SpiderSolitaire:
             self.histrec[self.historycount] = (oldrow, oldcolumn, fromrow, fromcolumn, dot)
 
     def find0(self, row, col80):
-        col = col80  # // 80
+        col = col80
         row2 = row
         while self.cardsarray[row2, col, 0] != 0:
             row2 = row2 + 1
@@ -169,7 +169,6 @@ class SpiderSolitaire:
         cdsleft = 52
         cdstrt = 1
         n = 78  #  random.randint(0, 100)  #78,45,1,22,27,43,80,84,31,46,84,49,90,89,28,16,60,51,22,6,27,77,87,96,48
-    #    print(n)
         random.seed(n)
         while cdsleft > 0:
             newrand = 0
@@ -198,10 +197,6 @@ class SpiderSolitaire:
                     cdstrt = cdstrt + 1
                     newrand = 1
 
-    #    @u, 140 say u & & picture "99.999" & & cds(n)
-    #    *wait
-    #    for k in range(1, 53):
-    #        dack[k + 52] = dack[k]   # dack[] is shuffled pack *2
         for k in range(1, 53):  #  105
             self.dck[k] = self.dack[k]
             self.dck[k + 52] = self.dack[k]
@@ -211,11 +206,9 @@ class SpiderSolitaire:
             self.dck[44 + k] = self.dack[k]  # initial exposed cards
             self.dck[k] = self.dack[k + 12]  #  64
 
-    #for  test
-        self.dck = [0,49,43,22,44,23,13,37,17,6,30,32,50,49,43,22,44,23,13,37,17,6,30,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,25,36,15,10,20,34,39,26,27,2,15,10,20,34,39,26,27,2,32,50,9,38,12,14,31,46,18,11,25,36,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,9,38,12,14,31,46,18,11]
+        # self.dck = [0,49,43,22,44,23,13,37,17,6,30,32,50,49,43,22,44,23,13,37,17,6,30,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,25,36,15,10,20,34,39,26,27,2,15,10,20,34,39,26,27,2,32,50,9,38,12,14,31,46,18,11,25,36,42,8,40,19,52,1,3,48,21,51,35,33,41,24,28,29,16,47,5,4,7,45,9,38,12,14,31,46,18,11]
 
 
-    #  def commencedeal():
         self.nextcard = 0
         for jl in range(10):  # to 9 do
             il = self.rowbase
@@ -243,7 +236,6 @@ class SpiderSolitaire:
                     self.caxsx[rowdepth, jlo, 1] = self.dck[self.nextcard + 1] % 4 + 1
                     self.nextcard = self.nextcard + 1
                 elif self.nextcard < 54:
-    #                cardsarray[rowdepth, jl] = dck[nextcard]
                     self.cardsarray[rowdepth, jl, 0] = self.dck[self.nextcard + 1] % 13 + 1
                     self.cardsarray[rowdepth, jl, 1] = self.dck[self.nextcard + 1] % 4 + 1
                     self.nextcard = self.nextcard + 1
@@ -269,9 +261,7 @@ class SpiderSolitaire:
 
             self.joinz()
             for self.it in range(10):
-    #        it = 0
                 self.tencards()
-    #            timedelay()
 
             self.newtencards = 0
             self.dealnext10 = self.dealnext10 + 1
@@ -289,10 +279,6 @@ class SpiderSolitaire:
 
             kkk = 0
             if (dot == 1) and(self.fromrow + kkk > self.rowbase):  #  (dot == 1) and     310821
-    #            dot = 0
-
-    #            rowfordisplay = fromrow + kkk - 1
-    #            columnfordisplay = fromcolumn
                 self.cardsarray[self.fromrow + kkk - 1, self.fromcolumn, 0] = self.facedown
 
             if (self.oldrow == 0) and (self.oldcolumn == 1):
@@ -310,7 +296,6 @@ class SpiderSolitaire:
                     rowfordisplay = rowfordisplay - 1
                     self.nextcard = self.nextcard - 1
 
-    #                lstcard(rowfordisplay, i)  #lastcard[i] = rowfordisplay - 1
                     self.lastcard[i] = rowfordisplay
             else:
                 if self.oldrow == 0:                   # undo removeSuit
@@ -325,7 +310,6 @@ class SpiderSolitaire:
                         rowfordisplay = self.fromrow + i - 1
                         columnfordisplay = self.fromcolumn
                     self.lastcard[self.fromcolumn] = self.fromrow + 12
-                    #                lstcard(fromrow+12, fromcolumn)  #  lastcard[fromcolumn] = fromrow + i   #  i - 1
                     self.removedsuit[kk] = 0
 
                 else:
@@ -337,7 +321,6 @@ class SpiderSolitaire:
                         rowfordisplay = self.fromrow + kkk
                         columnfordisplay = self.fromcolumn
                         
-    #                    timedelay()
                         if (self.oldcolumn > 9) and self.oldrow + kkk + 1 != 6:  # oldcolumn>9 when suit has been removed - cols 10-17
                             rowfordisplay = self.oldrow + kkk + 1 - 1
                         else:
@@ -345,10 +328,8 @@ class SpiderSolitaire:
                         columnfordisplay = self.oldcolumn
                         
                         kkk = kkk + 1
-    #                lstcard(fromrow + kkk - 1, fromcolumn)
                     self.lastcard[self.fromcolumn] = self.fromrow + kkk - 1
                     
-    #                lstcard(oldrow, oldcolumn)
                     self.lastcard[self.oldcolumn] = self.oldrow
 
 
@@ -357,38 +338,22 @@ class SpiderSolitaire:
         self.undoes()
 
     def describe(self, icol):
-    #    col80 = dims[icol]
         self.rowe = self.lastcard[icol]
         self.suitcard[icol] = self.cardsarray[self.rowe, self.col, 1]
         suitcardcol = self.suitcard[icol]
         if self.cardsarray[self.rowbase, self.col, 0] > 0:
-    #        while (cardsarray[rowe, col, 1] == suitcardcol) and \
             while (self.cardsarray[self.rowe - 1, self.col, 1] == suitcardcol) \
                     and (self.cardsarray[self.rowe, self.col, 0] == self.cardsarray[self.rowe - 1, self.col, 0] - 1):
                 self.rowe = self.rowe - 1
-        # if cardsarray[rowbase, col, 0] == 0:
-        #     wdow.create_rectangle(760, 170 + 30 * col, 790, 280 + 30 * col, width=0, fill="Green")
-        #     wdow.create_text(780, 200 + 30 * col, fill="white", font="Times 15 bold", text=str(rowe))
         self.firstcard[icol] = self.rowe
-
-
-    # def describe(col):
-    # #  // finds the first and last card in a particular column (col) of a
-    # #  // movable sequence of cards. A movable sequence of cards is of the same suit
-    # #  // and is in numerically descending order (such as 9,8,7,6,5).
-    #     global rowe, firstcard, lastcard, suitcard
-    #
-    #     findsuittop(col)
-
 
     def movecards(self):  #  var     ki, kj: integer;
         if self.col < 10 or self.col > 9:
             oldrow = self.rowe
             fromrow = self.jx
             fromcolumn = self.ijj
-        #    lstcard(fromrow - 1, fromcolumn)
             self.lastcard[fromcolumn] = fromrow - 1
-    #        lastcard[fromcolumn] = find0(rowbase - 1, fromcolumn) - 1
+    
             if self.lastcard[fromcolumn] != fromrow - 1 or fromcolumn > 9:
                 fromrow = fromrow
             while self.cardsarray[self.jx, fromcolumn, 0] != 0:
@@ -398,9 +363,9 @@ class SpiderSolitaire:
                 self.cardsarray[self.rowe, self.col, 1] = self.cardsarray[self.jx, fromcolumn, 1]
                 self.cardsarray[self.jx, fromcolumn, 0] = 0  # // show vacant space after card has been moved
                 self.jx = self.jx + 1
+                self.states.append(self.get_game_state())
             self.movecol = 1
 
-        #    lstcard(rowe, col)
             self.lastcard[self.col] = self.rowe
             
             dot = 0
@@ -410,16 +375,12 @@ class SpiderSolitaire:
                     self.cardsarray[fromrow - 1, fromcolumn, 0] = self.caxsx[fromrow - 1, fromcolumn, 0]
                     self.cardsarray[fromrow - 1, fromcolumn, 1] = self.caxsx[fromrow - 1, fromcolumn, 1]
                 
-            self.history(fromrow, fromcolumn, oldrow, self.col, dot)  # // history is stored to allow future undo
+            self.history(fromrow, fromcolumn, oldrow, self.col, dot)
+            self.states.append(self.get_game_state())
             
             self.describe(self.col)
             self.col = fromcolumn
             self.describe(self.col)
-
-        #    jx = col
-        #    sollve = wdow.after(50, movecards)
-        #    bottom.mainloop
-
 
     def joinsuits(self):
         self.jmov = 1
@@ -450,7 +411,6 @@ class SpiderSolitaire:
                 self.ijj = self.iijoins
                 self.movecards()
                 self.jmov = 1
-    #                    col = ii
             else:
                 self.jmov = 1
 
@@ -489,7 +449,6 @@ class SpiderSolitaire:
 
 
     def joinz(self):
-    #   // Start of  joinz  mainline.
         for ijr in range(10):
             self.col = ijr
             self.describe(self.col)  # // gather data for each column
@@ -500,27 +459,15 @@ class SpiderSolitaire:
             if self.newtencards == 0:  #    // if 10 more cards have been dealt, don't join suits.
                 self.joinsuits()
             self.fillspaces()
-            # if displaycounter > 400:
-            #     movecol = 0
-
-    #        timedelay()
-    #        display()
-
 
     def solve(self):  # var   iii: integer;
-    #    begin // automatically joins suit segments together, and fills empty columns.
-    #  // Fills empty columns before 10 more cards are dealt.
-    #  // Tests repeatedly until no more moves happen.            //
+        self.states.clear()
         self.oldr = -1
         self.joinz()
 
 
     def removesuit(self, row, colum):  #   // removecompletesuit from display
         suitremoved = 0
-
-        # if historycount == 1000:
-        #
-        #     rowfordisplay = 0
 
         clr = self.cardsarray[row, colum, 1]
         ij = 0
@@ -541,7 +488,6 @@ class SpiderSolitaire:
 
             suitremoved = 1
             self.lastcard[colum] = row - 1
-    #        lstcard(row - 1, colum)
 
             if (ij == 12):
                 if self.cardsarray[row - 1, colum, 0] == self.facedown:
@@ -556,19 +502,13 @@ class SpiderSolitaire:
             self.history(row, colum, 0, self.oldcolumn, self.dot)
         return suitremoved
 
-        #    // end proc removeSuit
-
 
     def findledges(self, colum):  #  find ledges and count available blank columns
-    #    global blankcolumn, ledgecolumn, ledgerow, blankcolumns
         blankcolumns = 0
         for jl in range(22):
             self.ledgecolumn[jl] = -1
-        for jl in range(10):
 
-    #        ll = rowbase
-    #        while cardsarray[ll, jl, 0] > 0:
-    #            ll = ll + 1
+        for jl in range(10):
             ll = self.lastcard[jl] + 1
 
             i = self.cardsarray[ll - 1, jl, 0]
@@ -580,8 +520,6 @@ class SpiderSolitaire:
                 blankcolumns = blankcolumns + 1
                 self.blankcolumn[blankcolumns] = jl
         return blankcolumns
-        #   // end     proc     findledges;
-
 
     def steps(self, ia, fnd):  #   // find    available    shelves    for card movements
         find = fnd
@@ -591,8 +529,8 @@ class SpiderSolitaire:
         ro80 = self.dims[self.fromcolumn]
         while self.cardsarray[addr_end_fragment, self.fromcolumn, 0] != 0:
             addr_end_fragment = addr_end_fragment + 1
+
         addr_end_fragment = addr_end_fragment - 1
-    #    addr_end_fragment = lastcard[fromcolumn]
         self.ct = addr_end_fragment
         self.n = 0
         self.xa = 0
@@ -636,8 +574,6 @@ class SpiderSolitaire:
         self.by[self.ya] = 1
         self.lth[self.ya] = self.fragment_length
         return find
-    #   // end proc steps;
-
 
     def spacefind(self):  #  // find a space       var         jm: integer;
         stopper = 0
@@ -649,8 +585,6 @@ class SpiderSolitaire:
                 self.oldrow = self.ledgerow[self.oldcolumn] - 1
             else:
                 jmx = jmx + 1
-        # // end proc spaceFind;
-
 
     def cutstep(self):  #   // Reduce unnecessary steps
         self.cc = self.fromrow
@@ -673,9 +607,6 @@ class SpiderSolitaire:
 
             self.ct = self.ct - 1
             self.cc = self.ct
-
-    #    end; // end     proc     cutstep;
-
 
     def movecard(self):  #   // move a card(cardsArraySuit)       var         l: integer;
         self.columnformove = self.ly[self.xa]
@@ -798,13 +729,11 @@ class SpiderSolitaire:
             self.repsuity = -1
             for jl in range(10):
                 self.colmoves[jl] = 0
-    #            if lastcard[jl] == rowbase - 1:
-    #                blnk = jl
+    
             reprank = self.cardsarray[self.fromrow, self.column, 0] + 1
             repsuit  = self.cardsarray[self.fromrow, self.column, 1]
             self.oldmasthead = self.column
-    #        colmoves[column] = 2
-    #        masthead = -1
+    
             k = self.column + 1
             if k == 10:
                 k = 0
@@ -823,7 +752,6 @@ class SpiderSolitaire:
                 if k == 10:
                     k = 0
 
-    #        colmoves[column] = 3
             if self.repsuity > -1:
                 masthead = self.repsuity
             if masthead > -1:
@@ -832,8 +760,7 @@ class SpiderSolitaire:
 
                 self.colmoves[masthead] = 2
                 return masthead  # succesful column (colmove) = 2, others = 1
-    #        elif blnk > -1:
-    #            colmoves[blnk] = 2
+
             return blnk
 
         else:   # same card was clicked again
@@ -874,8 +801,7 @@ class SpiderSolitaire:
                             self.colmoves[jl] = 1
                             k = jl
                     return blnk
-                # while k < 10:
-                #     k = oldmasthead - 1
+                
                 for jl in range (10):
                     if self.colmoves[jl] == 2 and jl != self.column:
                         self.colmoves[jl] = 1
@@ -1127,20 +1053,6 @@ class SpiderSolitaire:
 
 
     def tidyup(self):
-    #    return
-    #     #                lstcard(lastcard[column] + lastcard[colautostart] - fromrow + 1, column)  # lastcard[column] = lastcard[column] + lastcard[colautostart] - fromrow + 1
-    #
-    #           oldcolumn = column
-    #           oldrow = row
-        # cardrownumber = lastcard[fromcolumn]
-        # if cardrownumber > colsize:
-        #     h33t30cardrownumber = h33t30 // cardrownumber
-        #     expandcolumn(rowbase, fromcolumn, h33t30cardrownumber)  # ht // cardrownumber + rowbase)   ht * 6  30
-        #     compressor[fromcolumn] = h33t30cardrownumber
-        # else:
-        #     if compressor[fromcolumn] > h33:
-        #         expandcolumn(rowbase, fromcolumn, h33)
-        #         compressor[fromcolumn] = h33
         cardrownumber = self.lastcard[self.column]
         if cardrownumber > self.colsize:
             h33t30cardrownumber = self.h33t30 // cardrownumber
@@ -1149,13 +1061,8 @@ class SpiderSolitaire:
             if self.compressor[self.column] > self.h33:
                 self.compressor[self.column] = self.h33
 
-        if self.dott == 1:
-            dot = 1
-    #
-
     def cardfrontclick(self, rw, cl):  #  (ACard: TFunnelWebPlayingCard);var   lcoordinates: TRowAndColumn;
         self.states.clear()
-        #    // start procedure TExampleForm.CardFrontClick(ACard: TFunnelWebPlayingCard);
         self.column = cl   #  column
         row = rw + self.rowbase - 1   #  row
         ia = row
@@ -1164,7 +1071,6 @@ class SpiderSolitaire:
         ia = self.lastcard[cl] + 1  #  = find0(ia, r80)  # find address of bottom card plus 1
         self.endptr = ia
         if self.compressor[cl] == self.h33:
-    #    if ia < colsize + 1:  #   if < 30 cards in column
             self.autos(row)  #   //compute whether move legal
         else:
             if row > ia-2 or self.cardsarray[row, cl, 0] == self.facedown:  # if bottom card clicked or blank column
@@ -1176,7 +1082,6 @@ class SpiderSolitaire:
                 else:
                     ia = ia-13  # //2;    # else bottom 13 cards will be expanded
                 self.ilptr = ia   # store pointer to start of expansion
-    #            i80 = expander * 80
 
                 il = ia                # set counter  1682-1692 indented 07/12/23
                 cardcolumn80 = cardcolumn * 80
@@ -1197,14 +1102,12 @@ class SpiderSolitaire:
 
             if jm < 10:
                 self.dims[jm] = jm  # * 80
-    #            u[jm] = 1
             else:
                 self.dims[jm] = 0
-    #            u[jm] = 3
-        # difficulty = 9  # 4-9   9 is easiest
 
         self.difficult(difficulty)
 
+    
     def get_game_state(self) -> GameState:
         # Convert cardsarray to piles
         piles = []
@@ -1220,14 +1123,14 @@ class SpiderSolitaire:
                 
                 if face_up:
                     # For face-up cards, use the actual rank and suit
-                    pile_cards.append(Card(rank=rank, suit=suit, is_face_up=True, id=str(uuid4())))
+                    pile_cards.append(Card(rank=rank, suit=suit, is_face_up=True))
 
                     if row == self.lastcard[col]:
                         last_card_index = len(pile_cards)
                 else:
                     # For face-down cards, we don't know the actual rank/suit yet
                     # But we can get them from caxsx if needed
-                    pile_cards.append(Card(rank=0, suit=0, is_face_up=False, id=str(uuid4())))
+                    pile_cards.append(Card(rank=0, suit=0, is_face_up=False))
                 
                 row += 1
 
@@ -1244,7 +1147,7 @@ class SpiderSolitaire:
             # We don't know the order of remaining cards, but we know how many are left
             # For simplicity, we'll just indicate there are remaining cards without details
             for _ in range(remaining_cards):
-                stock_cards.append(Card(rank=0, suit=0, is_face_up=False, id=str(uuid4())))
+                stock_cards.append(Card(rank=0, suit=0, is_face_up=False))
         
         # Count completed sequences (removed suits)
         completed_sequences = 0
