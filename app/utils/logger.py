@@ -44,7 +44,7 @@ class CardArrangementLogger:
     @staticmethod
     def _suit_to_letter(suit: int) -> str:
         # Based on tests, 1 corresponds to Hearts
-        return {1: 'H', 2: 'S', 3: 'D', 4: 'C'}.get(suit, '?')
+        return {1: 'S', 2: 'C', 3: 'H', 4: 'D'}.get(suit, '?')
 
     @staticmethod
     def _card_str(card: Card) -> str:
