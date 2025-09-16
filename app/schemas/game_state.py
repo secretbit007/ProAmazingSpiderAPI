@@ -26,3 +26,10 @@ class MoveRequest(BaseModel):
 
 class NewGameRequest(BaseModel):
     difficulty: int = 9
+
+class SessionRequest(BaseModel):
+    session_id: Optional[str] = None
+
+class SessionResponse(BaseModel):
+    session_id: str
+    game_state: GameState

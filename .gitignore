@@ -201,3 +201,54 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific ignores
+# =======================
+
+# Session files (auto-generated, user-specific)
+app/sessions/
+sessions/
+
+# Log files (auto-generated)
+*.log
+app/*.log
+card_arrangements.log
+data.log
+
+# Test session files (temporary)
+test_session_*.json
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Environment variables
+.env.local
+.env.development
+.env.production
+
+# FastAPI specific
+.pytest_cache/
+htmlcov/
+
+# Documentation build
+docs/_build/
+site/

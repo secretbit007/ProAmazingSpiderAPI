@@ -1,25 +1,40 @@
 from fastapi import APIRouter, HTTPException, Request
 from app.core.game_logic import game_instance
-from app.schemas.game_state import GameState, MoveRequest, NewGameRequest
+from app.core.session_manager import session_manager
+from app.schemas.game_state import GameState, MoveRequest, NewGameRequest, SessionResponse
 from app.utils.logger import CardArrangementLogger
 from typing import List
 
 router = APIRouter()
 
-@router.post("/new-game", response_model=GameState)
+@router.post("/new-game", response_model=SessionResponse)
 async def new_game(request: NewGameRequest, http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
     CardArrangementLogger.log_operation_start(
         "new_game", 
-        {"difficulty": request.difficulty}, 
+        {"difficulty": request.difficulty, "session_id": session_id}, 
         request_id
     )
     
     try:
+        # Create new session if not provided
+        if not session_id:
+            session_id = session_manager.create_session()
+        
+        # Get or create game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=400, detail="Failed to create or retrieve session")
+        
+        # Initialize new game
         game_instance.new_game(request.difficulty)
         game_state = game_instance.get_game_state()
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log the new game state
         CardArrangementLogger.log_game_state(game_state, "new_game", request_id)
@@ -27,7 +42,7 @@ async def new_game(request: NewGameRequest, http_request: Request):
         # Log operation success
         CardArrangementLogger.log_operation_end("new_game", True, None, request_id)
         
-        return game_state
+        return SessionResponse(session_id=session_id, game_state=game_state)
     except Exception as e:
         # Log operation failure
         CardArrangementLogger.log_operation_end("new_game", False, str(e), request_id)
@@ -36,12 +51,24 @@ async def new_game(request: NewGameRequest, http_request: Request):
 @router.get("/game-state", response_model=GameState)
 async def get_game_state(http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
-    CardArrangementLogger.log_operation_start("get_game_state", None, request_id)
+    CardArrangementLogger.log_operation_start("get_game_state", {"session_id": session_id}, request_id)
     
     try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+        
+        # Get game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+        
         game_state = game_instance.get_game_state()
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log the current game state
         CardArrangementLogger.log_game_state(game_state, "get_game_state", request_id)
@@ -58,11 +85,12 @@ async def get_game_state(http_request: Request):
 @router.post("/move", response_model=List[GameState])
 async def make_move(move: MoveRequest, http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
     CardArrangementLogger.log_operation_start(
         "move", 
-        {"from_row": move.from_row, "from_col": move.from_col, "to_row": move.to_row, "to_col": move.to_col}, 
+        {"from_row": move.from_row, "from_col": move.from_col, "to_row": move.to_row, "to_col": move.to_col, "session_id": session_id}, 
         request_id
     )
     
@@ -72,6 +100,14 @@ async def make_move(move: MoveRequest, http_request: Request):
     )
     
     try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+        
+        # Get game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+        
         # Get state before move
         before_state = game_instance.get_game_state()
         
@@ -83,6 +119,9 @@ async def make_move(move: MoveRequest, http_request: Request):
         result = game_instance.states
         after_state = game_instance.get_game_state()
         result.append(after_state)
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "move", request_id)
@@ -99,16 +138,28 @@ async def make_move(move: MoveRequest, http_request: Request):
 @router.post("/deal", response_model=GameState)
 async def deal_cards(http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
-    CardArrangementLogger.log_operation_start("deal", None, request_id)
+    CardArrangementLogger.log_operation_start("deal", {"session_id": session_id}, request_id)
     
     try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+        
+        # Get game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+        
         # Get state before dealing
         before_state = game_instance.get_game_state()
         
         game_instance.stackclick()
         after_state = game_instance.get_game_state()
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "deal", request_id)
@@ -125,11 +176,20 @@ async def deal_cards(http_request: Request):
 @router.post("/solve", response_model=List[GameState])
 async def solve_game(http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
-    CardArrangementLogger.log_operation_start("solve", None, request_id)
+    CardArrangementLogger.log_operation_start("solve", {"session_id": session_id}, request_id)
     
     try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+        
+        # Get game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+        
         # Get state before solving
         before_state = game_instance.get_game_state()
         
@@ -138,6 +198,9 @@ async def solve_game(http_request: Request):
         result = game_instance.states
         after_state = game_instance.get_game_state()
         result.append(after_state)
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "solve", request_id)
@@ -154,16 +217,28 @@ async def solve_game(http_request: Request):
 @router.post("/undo", response_model=GameState)
 async def undo_move(http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
     
     # Log operation start
-    CardArrangementLogger.log_operation_start("undo", None, request_id)
+    CardArrangementLogger.log_operation_start("undo", {"session_id": session_id}, request_id)
     
     try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+        
+        # Get game instance for this session
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+        
         # Get state before undo
         before_state = game_instance.get_game_state()
         
         game_instance.undo()
         after_state = game_instance.get_game_state()
+        
+        # Save session state
+        session_manager.save_session(session_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "undo", request_id)
@@ -176,3 +251,15 @@ async def undo_move(http_request: Request):
         # Log operation failure
         CardArrangementLogger.log_operation_end("undo", False, str(e), request_id)
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/cleanup-sessions")
+async def cleanup_sessions(http_request: Request):
+    """Clean up expired sessions (admin endpoint)"""
+    request_id = getattr(http_request.state, 'request_id', None)
+    
+    try:
+        session_manager.cleanup_expired_sessions()
+        return {"message": "Session cleanup completed"}
+    except Exception as e:
+        CardArrangementLogger.log_operation_end("cleanup_sessions", False, str(e), request_id)
+        raise HTTPException(status_code=500, detail=str(e))

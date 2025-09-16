@@ -2,12 +2,16 @@ from fastapi import FastAPI, Request
 from app.core.config import settings
 from app.api.v1.endpoints import router
 from app.middleware.logging_middleware import LoggingMiddleware
+from app.middleware.session_middleware import SessionMiddleware
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description=settings.PROJECT_DESCRIPTION,
     version=settings.PROJECT_VERSION
 )
+
+# Add session middleware (must be before logging middleware)
+app.add_middleware(SessionMiddleware)
 
 # Add logging middleware
 app.add_middleware(LoggingMiddleware)
