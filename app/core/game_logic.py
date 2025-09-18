@@ -1151,9 +1151,15 @@ class SpiderSolitaire:
         
         # Count completed sequences (removed suits)
         completed_sequences = 0
+        completed_sequences_by_suit = {}
         for suit in self.removedsuit:
             if suit > 0:
                 completed_sequences += 1
+                # Count how many times each suit has been completed
+                if suit in completed_sequences_by_suit:
+                    completed_sequences_by_suit[suit] += 1
+                else:
+                    completed_sequences_by_suit[suit] = 1
         
         # Calculate remaining draws (each draw is 10 cards)
         draws_remaining = 5 - self.dealnext10
@@ -1162,6 +1168,7 @@ class SpiderSolitaire:
             piles=piles,
             stock=stock_cards,
             completed_sequences=completed_sequences,
+            completed_sequences_by_suit=completed_sequences_by_suit,
             moves=self.historycount,
             difficulty=9 - self.difficulty,  # Convert internal difficulty to external
             draws_remaining=draws_remaining

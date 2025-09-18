@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 class Card(BaseModel):
     rank: int
@@ -14,6 +14,7 @@ class GameState(BaseModel):
     piles: List[Pile]
     stock: List[Card]
     completed_sequences: int
+    completed_sequences_by_suit: Dict[int, int]  # suit -> count mapping
     moves: int
     difficulty: int
     draws_remaining: int
