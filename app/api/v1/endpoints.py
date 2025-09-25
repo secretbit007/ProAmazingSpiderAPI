@@ -111,6 +111,9 @@ async def make_move(move: MoveRequest, http_request: Request):
         # Get state before move
         before_state = game_instance.get_game_state()
         
+        # Log the gameboard before move
+        CardArrangementLogger.log_game_state(before_state, "move_before", request_id)
+        
         game_instance.cardfrontclick(
             rw=move.from_row,
             cl=move.from_col,
@@ -122,6 +125,9 @@ async def make_move(move: MoveRequest, http_request: Request):
         
         # Save session state
         session_manager.save_session(session_id)
+        
+        # Log the gameboard after move
+        CardArrangementLogger.log_game_state(after_state, "move_after", request_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "move", request_id)
@@ -155,11 +161,17 @@ async def deal_cards(http_request: Request):
         # Get state before dealing
         before_state = game_instance.get_game_state()
         
+        # Log the gameboard before dealing
+        CardArrangementLogger.log_game_state(before_state, "deal_before", request_id)
+        
         game_instance.stackclick()
         after_state = game_instance.get_game_state()
         
         # Save session state
         session_manager.save_session(session_id)
+        
+        # Log the gameboard after dealing
+        CardArrangementLogger.log_game_state(after_state, "deal_after", request_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "deal", request_id)
@@ -193,6 +205,9 @@ async def solve_game(http_request: Request):
         # Get state before solving
         before_state = game_instance.get_game_state()
         
+        # Log the gameboard before solving
+        CardArrangementLogger.log_game_state(before_state, "solve_before", request_id)
+        
         game_instance.solve()
 
         result = game_instance.states
@@ -201,6 +216,9 @@ async def solve_game(http_request: Request):
         
         # Save session state
         session_manager.save_session(session_id)
+        
+        # Log the gameboard after solving
+        CardArrangementLogger.log_game_state(after_state, "solve_after", request_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "solve", request_id)
@@ -234,11 +252,17 @@ async def undo_move(http_request: Request):
         # Get state before undo
         before_state = game_instance.get_game_state()
         
+        # Log the gameboard before undo
+        CardArrangementLogger.log_game_state(before_state, "undo_before", request_id)
+        
         game_instance.undo()
         after_state = game_instance.get_game_state()
         
         # Save session state
         session_manager.save_session(session_id)
+        
+        # Log the gameboard after undo
+        CardArrangementLogger.log_game_state(after_state, "undo_after", request_id)
         
         # Log state comparison
         CardArrangementLogger.log_state_comparison(before_state, after_state, "undo", request_id)
