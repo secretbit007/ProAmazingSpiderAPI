@@ -236,7 +236,7 @@ class SpiderSolitaire:
             self.newtencards = 1
 
             self.joinz()
-            for it in range(10):
+            for self.it in range(10):
                 self.tencards()
 
             self.newtencards = 0
