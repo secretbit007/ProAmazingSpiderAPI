@@ -705,98 +705,60 @@ class SpiderSolitaire:
         self.oldrow = self.oldrow + self.lth[self.xa]  #   // end proc fillshlf;
 
     def repeatcol(self):
-        blnk = -1
-        masthead = -1
+        blnk = -1  # show no empty columns
         if self.oldr != self.column or self.oldc != self.fromrow:  # oldr, oldc are previous destination addr
-            self.repsuity = -1
-            for jl in range(10):
-                self.colmoves[jl] = 0
-            reprank = self.cardsarray[self.fromrow, self.column, 0] + 1
-            repsuit  = self.cardsarray[self.fromrow, self.column, 1]
-            self.oldfromrow = self.fromrow
-            self.oldmasthead = self.column
-            k = self.column + 1
-            if k == 10:
-                k = 0
-            while k != self.column:
+            k = 0
+            jl = 0    
+            reprank = int(self.cardsarray[self.fromrow, self.column, 0]) + 1
+            repsuit  = int(self.cardsarray[self.fromrow, self.column, 1])        
+            while k < 10:
                 j = self.lastcard[k]
                 if j == 4:
                     blnk = k
                 else:
-                    m = self.cardsarray[j, k, 0]
-                    if m == reprank:  # and masthead == -1:
-                        masthead = k
-                        self.colmoves[k] = 1
-                        if self.repsuity == -1 and self.cardsarray[j, k, 1] == repsuit:
-                            self.repsuity = k
-                k = k + 1
-                if k == 10:
-                    k = 0
-
-            if self.repsuity > -1:
-                masthead = self.repsuity
-            if masthead > -1:
-                if self.fromrow == 5:
-                    self.colmoves[self.column] = 0
-                self.colmoves[self.oldmasthead] = 2
-                self.colmoves[masthead] = 2
-                return masthead  # succesful column (colmove) = 2, others = 1
-            return blnk
+                    m = int(self.cardsarray[j, k, 0])
+                    if m == reprank:  
         
+                        self.colmoves[jl] = k
+                    
+        
+                        if self.cardsarray[j, k, 1] == repsuit:
+    
+                            j = int(self.colmoves[0])
+                            self.colmoves[0] = k
+                            self.colmoves[jl] = j
+                        jl = jl + 1
+                k = k + 1
+            self.masthead = jl - 1
+
+            if blnk != -1:
+                self.colmoves[jl] = blnk
+
+                self.masthead = self.masthead + 1
+    
+            j = int(self.colmoves[0])
+    
+            self.oldmasthead = 0
+            self.colmoves[9] = self.column
+            self.colmoves[8] = self.fromrow
+            return j
+
         else:   # same card was clicked again
-            self.repsuity = -1  # 27/04/24
-            blnk = -1
-            k = self.lastcard[self.oldmasthead]
-            if (self.cardsarray[self.fromrow, self.column, 0] == self.cardsarray[k, self.oldmasthead, 0] - 1):
-                self.colmoves[self.oldmasthead] = 1
-
-            if self.oldfromrow > -1 and self.oldmasthead > -1:
-                if self.cardsarray[self.oldfromrow - 1, self.oldmasthead, 0] != self.cardsarray[self.fromrow, self.column, 0] + 1:
-                    self.colmoves[self.oldmasthead] = 0
-                    self.oldmasthead = self.column
-
-                self.oldfromrow = -1
-
-            k = self.column -1
-            if k == -1:
-                k = 9
-            j = 0
-            while j != 9:  # and masthead == -1:  #  find other valid destination
-                if self.lastcard[k] == self.rowbase -1: # and fromrow != rowbase:
-                    blnk = k  # vacant column
-                if self.colmoves[k] == 1:
-                    if masthead == -1:
-                        self.colmoves[k] = 2
-                        masthead = k
-                k = k -1
-                if k == -1:
-                    k = 9
-                j = j + 1
-            if masthead > -1:
-                if self.fromrow == 5:
-                    self.colmoves[k] = 0
-                else:
-                    self.colmoves[k] = 2  # found another shelf but not an empty column
-                return masthead
-            else:  # need to find an empty column
-                if self.fromrow == self.rowbase:
-                    blnk = -1
-                k = -1
-                if blnk > -1: # and lastcard[blnk] != rowbase -1: # and colmoves[blnk] != 3:
-                    for jl in range(10):
-                        if self.colmoves[jl] == 2:
-                            self.colmoves[jl] = 1
-                            k = jl
-                    return blnk
-                for jl in range (10):
-                    if self.colmoves[jl] == 2 and jl != self.column:
-                        self.colmoves[jl] = 1
-                        masthead = jl  #oldmasthead = jl
-                if masthead > -1:  #oldmasthead > -1:
-                    return masthead  #oldmasthead
-                else:
-                    return blnk
-
+            colum = int(self.colmoves[9])
+            fromro = int(self.colmoves[8])
+            if self.cardsarray[fromro - 1, colum, 0] == self.cardsarray[self.fromrow, self.column, 0] + 1 or fromro == 5:
+                self.colmoves[self.masthead + 1] = colum
+                self.masthead = self.masthead + 1
+            self.colmoves[8] = 0
+        
+            if self.oldmasthead == self.masthead:
+                j = int(self.colmoves[0])
+                self.oldmasthead = 0
+            else:
+                self.oldmasthead = self.oldmasthead + 1
+                j = int(self.colmoves[self.oldmasthead])
+    
+            return j
 
     def autos(self, row):   #// start proc autos;   // calculate path for card movements
         xi = np.zeros(shape=23, dtype='int32')  # [0] * 23
