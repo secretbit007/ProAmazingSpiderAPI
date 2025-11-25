@@ -20,17 +20,17 @@ class SessionMiddleware(BaseHTTPMiddleware):
         if not session_id:
             session_id = request.query_params.get("session_id")
         
-        # If still no session ID, check if this is a new game request
-        if not session_id and request.url.path.endswith("/new-game"):
-            # For new game requests without session ID, we'll create one in the endpoint
-            pass
-        elif not session_id:
-            # For other requests without session ID, return error
-            if request.url.path not in ["/", "/docs", "/openapi.json", "/redoc"]:
-                raise HTTPException(
-                    status_code=400, 
-                    detail="Session ID required. Please start a new game or provide session_id in header or query parameter."
-                )
+        # # If still no session ID, check if this is a new game request
+        # if not session_id and request.url.path.endswith("/new-game"):
+        #     # For new game requests without session ID, we'll create one in the endpoint
+        #     pass
+        # elif not session_id:
+        #     # For other requests without session ID, return error
+        #     if request.url.path not in ["/", "/docs", "/openapi.json", "/redoc"]:
+        #         raise HTTPException(
+        #             status_code=400, 
+        #             detail="Session ID required. Please start a new game or provide session_id in header or query parameter."
+        #         )
         
         # Add session ID to request state
         request.state.session_id = session_id
