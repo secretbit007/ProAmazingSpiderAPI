@@ -105,6 +105,10 @@ class SpiderSolitaire:
         self.nextcard = 0
         self.historycount = 0
         self.dealnext10 = 0
+        
+        # Reset newdig array for difficulty logic
+        for j in range(14):
+            self.newdig[j] = 0
 
         self.shuffle()
         for i in range(10):
@@ -146,11 +150,11 @@ class SpiderSolitaire:
                 n = n + 1
                 self.card[n] = n
                 self.cds[m + j] = j
-                self.newdig[j] = 0
+                self.newdig[j] = 0  # Reset here as well for safety
+        
         cdsleft = 52
         cdstrt = 1
-        n = random.randint(0, 100)  #1,78,45,43,80,84,31,46,84,49,90,89,28,16,60,51,22,6,27,77,87,96,48
-        random.seed(n)
+        
         while cdsleft > 0:
             newrand = 0
             while newrand == 0:
@@ -167,11 +171,7 @@ class SpiderSolitaire:
                         self.card[n] = self.card[cdsleft]
                         cdsleft = cdsleft - 1
                         cdstrt = cdstrt + 1
-
-
-                    newrand=1
                 else:
-
                     self.dack[cdstrt] = self.card[n]   # selects later cards from pack
                     self.card[n] = self.card[cdsleft]
                     cdsleft = cdsleft - 1
@@ -192,14 +192,13 @@ class SpiderSolitaire:
             il = self.rowbase
             while self.cardsarray[il, jl, 0] > 0:
                 self.cardsarray[il, jl, 0] = 0  # card space empty
-
                 il = il + 1
             
             if jl < 4:
-
                 self.lastcard[jl] = self.rowbase + 5
             else:
                 self.lastcard[jl] = self.rowbase + 4
+                
         rowdepth = self.rowbase
         while rowdepth < self.rowbase + 7:
             for jl in range(10):
