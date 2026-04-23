@@ -28,7 +28,9 @@ async def new_game(request: NewGameRequest, http_request: Request):
         game_instance = session_manager.get_session(session_id)
         if not game_instance:
             raise HTTPException(status_code=400, detail="Failed to create or retrieve session")
-        
+
+        session_manager.clear_dedup_cache(session_id)
+
         # Initialize new game
         game_instance.new_game(request.difficulty)
         game_state = game_instance.get_game_state()

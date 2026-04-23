@@ -2,8 +2,9 @@ import os
 import json
 import uuid
 import time
+import asyncio
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 from pathlib import Path
 from app.core.game_logic import SpiderSolitaire
 from app.schemas.game_state import GameState
@@ -19,7 +20,24 @@ class SessionManager:
         self.sessions_dir.mkdir(exist_ok=True)
         self.active_sessions: Dict[str, SpiderSolitaire] = {}
         self.session_timeout = 3600  # 1 hour in seconds
-        
+        self._request_locks: Dict[str, asyncio.Lock] = {}
+        self._dedup_cache: Dict[str, Dict[str, Any]] = {}
+
+    def get_request_lock(self, session_id: str) -> asyncio.Lock:
+        """Serialize mutating API calls per session to avoid concurrent double-application."""
+        if session_id not in self._request_locks:
+            self._request_locks[session_id] = asyncio.Lock()
+        return self._request_locks[session_id]
+
+    def get_dedup_cache(self, session_id: str) -> Optional[Dict[str, Any]]:
+        return self._dedup_cache.get(session_id)
+
+    def set_dedup_cache(self, session_id: str, entry: Dict[str, Any]) -> None:
+        self._dedup_cache[session_id] = entry
+
+    def clear_dedup_cache(self, session_id: str) -> None:
+        self._dedup_cache.pop(session_id, None)
+
     def create_session(self) -> str:
         """Create a new game session and return session ID"""
         session_id = str(uuid.uuid4())
@@ -173,6 +191,8 @@ class SessionManager:
         # Remove from memory
         if session_id in self.active_sessions:
             del self.active_sessions[session_id]
+        self._request_locks.pop(session_id, None)
+        self.clear_dedup_cache(session_id)
         
         # Remove files
         session_file = self.sessions_dir / f"{session_id}.json"

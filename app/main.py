@@ -4,6 +4,7 @@ from app.core.config import settings
 from app.api.v1.endpoints import router
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.session_middleware import SessionMiddleware
+from app.middleware.dedup_middleware import RequestDedupMiddleware
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -11,10 +12,9 @@ app = FastAPI(
     version=settings.PROJECT_VERSION
 )
 
-# Add session middleware (must be before logging middleware)
+# Dedup runs inside Session so request.state.session_id is set (Session added after Dedup).
+app.add_middleware(RequestDedupMiddleware)
 app.add_middleware(SessionMiddleware)
-
-# Add logging middleware
 app.add_middleware(LoggingMiddleware)
 
 app.include_router(router, prefix=settings.API_V1_STR)

@@ -10,6 +10,12 @@ class Settings(BaseSettings):
     ENABLE_CARD_LOGGING: bool = True
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "card_arrangements.log"
+
+    # Deduplicate rapid identical mutating requests (same session, body, game revision)
+    ENABLE_REQUEST_DEDUP: bool = True
+    # If the same POST is seen again while the board revision (historycount) is unchanged
+    # since the last cached response, replay that response instead of re-running the handler.
+    DEDUP_WINDOW_SECONDS: float = 0.75
     
     class Config:
         case_sensitive = True
