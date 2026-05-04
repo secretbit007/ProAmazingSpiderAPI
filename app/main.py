@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.gzip import GZipMiddleware
 from app.core.config import settings
 from app.api.v1.endpoints import router
 from app.middleware.logging_middleware import LoggingMiddleware
@@ -11,6 +12,9 @@ app = FastAPI(
     description=settings.PROJECT_DESCRIPTION,
     version=settings.PROJECT_VERSION
 )
+
+# Outermost first: compress JSON responses when client sends Accept-Encoding: gzip.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Dedup runs inside Session so request.state.session_id is set (Session added after Dedup).
 app.add_middleware(RequestDedupMiddleware)

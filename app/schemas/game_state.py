@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict
 
 class Card(BaseModel):
@@ -12,12 +12,24 @@ class Pile(BaseModel):
 
 class GameState(BaseModel):
     piles: List[Pile]
-    stock: List[Card]
+    # Wire format: prefer stock_count; legacy clients may send a long placeholder stock list.
+    stock: List[Card] = Field(default_factory=list)
+    stock_count: int = 0
     completed_sequences: int
-    completed_sequences_by_suit: Dict[int, int]  # suit -> count mapping
+    completed_sequences_by_suit: Dict[int, int] = Field(default_factory=dict)
     moves: int
     difficulty: int
     draws_remaining: int
+
+    @model_validator(mode="after")
+    def normalize_stock_wire_format(self) -> "GameState":
+        st = self.stock
+        sc = self.stock_count
+        if len(st) > 0:
+            if sc == 0:
+                object.__setattr__(self, "stock_count", len(st))
+            object.__setattr__(self, "stock", [])
+        return self
 
 class MoveRequest(BaseModel):
     from_row: int

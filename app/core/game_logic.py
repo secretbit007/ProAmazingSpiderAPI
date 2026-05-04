@@ -1064,15 +1064,9 @@ class SpiderSolitaire:
 
             piles.append(Pile(cards=pile_cards, last_card_index=last_card_index))
         
-        # Calculate remaining stock (cards not yet dealt)
-        stock_cards = []
-        remaining_cards = 104 - self.nextcard  # Total cards in 2 decks minus dealt cards
-        if remaining_cards > 0:
-            # We don't know the order of remaining cards, but we know how many are left
-            # For simplicity, we'll just indicate there are remaining cards without details
-            for _ in range(remaining_cards):
-                stock_cards.append(Card(rank=0, suit=0, is_face_up=False))
-        
+        # Remaining stock: expose count only (avoids huge JSON arrays on every response).
+        remaining_cards = max(0, 104 - self.nextcard)  # Total cards in 2 decks minus dealt cards
+
         # Count completed sequences (removed suits)
         completed_sequences = 0
         completed_sequences_by_suit = {}
@@ -1090,7 +1084,8 @@ class SpiderSolitaire:
         
         return GameState(
             piles=piles,
-            stock=stock_cards,
+            stock=[],
+            stock_count=remaining_cards,
             completed_sequences=completed_sequences,
             completed_sequences_by_suit=completed_sequences_by_suit,
             moves=self.historycount,

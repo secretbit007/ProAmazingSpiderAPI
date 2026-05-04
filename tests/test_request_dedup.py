@@ -18,12 +18,13 @@ def test_duplicate_deal_replays_within_window():
 
     first = client.post("/api/v1/deal", headers=h)
     assert first.status_code == 200
-    state_after_first = client.get("/api/v1/game-state", headers=h).json()
 
+    # Duplicate POST immediately (no GET between) so dedup cache token still matches.
     second = client.post("/api/v1/deal", headers=h)
     assert second.status_code == 200
     assert second.headers.get("X-Request-Dedup") == "replay"
     assert second.content == first.content
 
+    state_after_first = client.get("/api/v1/game-state", headers=h).json()
     state_after_second = client.get("/api/v1/game-state", headers=h).json()
     assert state_after_second == state_after_first

@@ -85,7 +85,7 @@ class CardArrangementLogger:
         
         header = (
             f"[request_id={request_id}] operation={operation} "
-            f"stock={len(game_state.stock)} completed={game_state.completed_sequences} "
+            f"stock_count={game_state.stock_count} completed={game_state.completed_sequences} "
             f"moves={game_state.moves} difficulty={game_state.difficulty} draws={game_state.draws_remaining}"
         )
         board = CardArrangementLogger._format_board(game_state)
@@ -143,7 +143,7 @@ class CardArrangementLogger:
         draws_remaining_change = after_state.draws_remaining - before_state.draws_remaining
         total_cards_before = sum(len(pile.cards) for pile in before_state.piles)
         total_cards_after = sum(len(pile.cards) for pile in after_state.piles)
-        stock_change = len(after_state.stock) - len(before_state.stock)
+        stock_change = after_state.stock_count - before_state.stock_count
 
         log_text = (
             f"[request_id={request_id}] operation={operation} state_change "

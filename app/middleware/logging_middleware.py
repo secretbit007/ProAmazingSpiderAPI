@@ -7,6 +7,7 @@ from starlette.responses import Response
 import logging
 from app.core.game_logic import game_instance
 from app.utils.logger import CardArrangementLogger
+from app.core.config import settings
 
 logger = logging.getLogger('request_logger')
 
@@ -26,9 +27,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # Log request start with current board state
         logger.info(f"Request started - ID: {request_id}, IP: {client_ip}, Method: {request.method}, Path: {request.url.path}")
         
-        # Log current board state at request start (only if session exists)
+        # Optional board snapshots (expensive: full get_game_state). Only when card logging is enabled.
         session_id = getattr(request.state, 'session_id', None)
-        if session_id:
+        if session_id and settings.ENABLE_CARD_LOGGING:
             try:
                 from app.core.session_manager import session_manager
                 game_instance = session_manager.get_session(session_id)
@@ -44,8 +45,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         # Log request end with final board state
         logger.info(f"Request completed - ID: {request_id}, IP: {client_ip}, Status: {response.status_code}")
         
-        # Log final board state at request end (only if session exists)
-        if session_id:
+        if session_id and settings.ENABLE_CARD_LOGGING:
             try:
                 from app.core.session_manager import session_manager
                 game_instance = session_manager.get_session(session_id)

@@ -69,8 +69,7 @@ async def get_game_state(http_request: Request):
         
         game_state = game_instance.get_game_state()
         
-        # Save session state
-        session_manager.save_session(session_id)
+        # Read-only: do not persist full game JSON on every poll (session access time still updated in get_session).
         
         # Log the current game state
         CardArrangementLogger.log_game_state(game_state, "get_game_state", request_id)
