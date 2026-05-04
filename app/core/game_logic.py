@@ -10,6 +10,7 @@ class SpiderSolitaire:
 
     def initialize_game(self):
         self.states = []
+        self.solve_events = []
         
         self.col = 0
         self.jmov = 0
@@ -334,12 +335,25 @@ class SpiderSolitaire:
                 fromrow = fromrow
             while self.cardsarray[self.jx, fromcolumn, 0] != 0:
                 self.rowe = self.rowe + 1
+                moved_rank = int(self.cardsarray[self.jx, fromcolumn, 0])
+                moved_suit = int(self.cardsarray[self.jx, fromcolumn, 1])
+                from_row_now = int(self.jx)
+                to_row_now = int(self.rowe)
 
                 self.cardsarray[self.rowe, self.col, 0] = self.cardsarray[self.jx, fromcolumn, 0]
                 self.cardsarray[self.rowe, self.col, 1] = self.cardsarray[self.jx, fromcolumn, 1]
                 self.cardsarray[self.jx, fromcolumn, 0] = 0  # // show vacant space after card has been moved
                 self.jx = self.jx + 1
-                self.states.append(self.get_game_state())
+
+                self.solve_events.append({
+                    "type": "move_card",
+                    "from_row": from_row_now,
+                    "from_col": int(fromcolumn),
+                    "to_row": to_row_now,
+                    "to_col": int(self.col),
+                    "rank": moved_rank,
+                    "suit": moved_suit,
+                })
             self.movecol = 1
 
             self.lastcard[self.col] = self.rowe
@@ -350,10 +364,18 @@ class SpiderSolitaire:
                     dot = 1
                     self.cardsarray[fromrow - 1, fromcolumn, 0] = self.caxsx[fromrow - 1, fromcolumn, 0]
                     self.cardsarray[fromrow - 1, fromcolumn, 1] = self.caxsx[fromrow - 1, fromcolumn, 1]
+                    self.solve_events.append({
+                        "type": "flip_card",
+                        "from_row": int(fromrow - 1),
+                        "from_col": int(fromcolumn),
+                        "to_row": int(fromrow - 1),
+                        "to_col": int(fromcolumn),
+                        "rank": int(self.cardsarray[fromrow - 1, fromcolumn, 0]),
+                        "suit": int(self.cardsarray[fromrow - 1, fromcolumn, 1]),
+                    })
                 
             self.history(fromrow, fromcolumn, oldrow, self.col, dot)  # // history is stored to allow future undo
             movesize = self.jx - fromrow
-            self.states.append(self.get_game_state())
             
             self.describe(self.col)
             self.col = fromcolumn
@@ -439,6 +461,7 @@ class SpiderSolitaire:
 
     def solve(self):  # var   iii: integer;
         self.states.clear()
+        self.solve_events.clear()
         self.oldr = -1
         self.joinz()
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from app.core.game_logic import game_instance
 from app.core.session_manager import session_manager
-from app.schemas.game_state import GameState, MoveRequest, NewGameRequest, SessionResponse
+from app.schemas.game_state import GameState, MoveRequest, NewGameRequest, SessionResponse, SolveResponse
 from app.utils.logger import CardArrangementLogger
 from typing import List
 
@@ -187,7 +187,7 @@ async def deal_cards(http_request: Request):
         CardArrangementLogger.log_operation_end("deal", False, str(e), request_id)
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/solve", response_model=List[GameState])
+@router.post("/solve", response_model=SolveResponse)
 async def solve_game(http_request: Request):
     request_id = getattr(http_request.state, 'request_id', None)
     session_id = getattr(http_request.state, 'session_id', None)
@@ -211,10 +211,7 @@ async def solve_game(http_request: Request):
         # CardArrangementLogger.log_game_state(before_state, "solve_before", request_id)
         
         game_instance.solve()
-
-        result = game_instance.states
         after_state = game_instance.get_game_state()
-        result.append(after_state)
         
         # Save session state
         session_manager.save_session(session_id)
@@ -228,7 +225,11 @@ async def solve_game(http_request: Request):
         # Log operation success
         CardArrangementLogger.log_operation_end("solve", True, None, request_id)
 
-        return result
+        return SolveResponse(
+            initial_state=before_state,
+            events=game_instance.solve_events,
+            final_state=after_state,
+        )
     except Exception as e:
         # Log operation failure
         CardArrangementLogger.log_operation_end("solve", False, str(e), request_id)

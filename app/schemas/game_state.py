@@ -34,3 +34,19 @@ class SessionRequest(BaseModel):
 class SessionResponse(BaseModel):
     session_id: str
     game_state: GameState
+
+
+class SolveEvent(BaseModel):
+    type: str
+    from_row: Optional[int] = None
+    from_col: Optional[int] = None
+    to_row: Optional[int] = None
+    to_col: Optional[int] = None
+    rank: Optional[int] = None
+    suit: Optional[int] = None
+
+
+class SolveResponse(BaseModel):
+    initial_state: GameState
+    events: List[SolveEvent]
+    final_state: GameState
