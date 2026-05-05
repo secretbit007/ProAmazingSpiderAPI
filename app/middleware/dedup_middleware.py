@@ -7,6 +7,8 @@ from starlette.responses import Response
 from app.core.config import settings
 from app.core.session_manager import session_manager
 
+JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+
 _HOP_BY_HOP_AND_ENTITY = frozenset(
     {
         "connection",
@@ -33,6 +35,16 @@ def _dedup_post_paths() -> frozenset[str]:
             f"{base}/solve",
         }
     )
+
+
+def _api_json_response(
+    payload: bytes,
+    status_code: int,
+    extra_headers: dict[str, str],
+) -> Response:
+    """Dedup replays raw bytes; always advertise JSON so clients don't mis-parse the body."""
+    headers = {**extra_headers, "content-type": JSON_CONTENT_TYPE}
+    return Response(content=payload, status_code=status_code, headers=headers)
 
 
 class RequestDedupMiddleware(BaseHTTPMiddleware):
@@ -85,11 +97,10 @@ class RequestDedupMiddleware(BaseHTTPMiddleware):
                         if k.lower() not in _HOP_BY_HOP_AND_ENTITY
                     }
                     hdrs["X-Request-Dedup"] = "replay"
-                    return Response(
-                        content=cached["body"],
-                        status_code=cached["status_code"],
-                        headers=hdrs,
-                        media_type=cached.get("media_type") or "application/json",
+                    return _api_json_response(
+                        cached["body"],
+                        cached["status_code"],
+                        hdrs,
                     )
 
             response = await call_next(request)
@@ -99,27 +110,23 @@ class RequestDedupMiddleware(BaseHTTPMiddleware):
                 parts.append(chunk)
             payload = b"".join(parts)
 
-            if response.status_code >= 500:
-                return Response(
-                    content=payload,
-                    status_code=response.status_code,
-                    headers={
-                        k: v
-                        for k, v in response.headers.items()
-                        if k.lower() not in _HOP_BY_HOP_AND_ENTITY
-                    },
-                    media_type=response.media_type,
-                )
-
-            post_token = int(game.historycount)
-            stable_headers = {
+            passthrough_headers = {
                 k: v
                 for k, v in response.headers.items()
                 if k.lower() not in _HOP_BY_HOP_AND_ENTITY
             }
-            media_type = response.media_type
-            if media_type is None:
-                media_type = response.headers.get("content-type", "application/json")
+
+            if response.status_code >= 500:
+                # May be HTML/plain from framework error page — preserve original semantics.
+                return Response(
+                    content=payload,
+                    status_code=response.status_code,
+                    headers=passthrough_headers,
+                    media_type=response.media_type,
+                )
+
+            post_token = int(game.historycount)
+            media_type = response.media_type or response.headers.get("content-type") or JSON_CONTENT_TYPE
 
             session_manager.set_dedup_cache(
                 session_id,
@@ -128,19 +135,10 @@ class RequestDedupMiddleware(BaseHTTPMiddleware):
                     "post_token": post_token,
                     "body": payload,
                     "status_code": response.status_code,
-                    "headers": stable_headers,
+                    "headers": passthrough_headers,
                     "media_type": media_type,
                     "ts_mono": time.monotonic(),
                 },
             )
 
-            return Response(
-                content=payload,
-                status_code=response.status_code,
-                headers={
-                    k: v
-                    for k, v in response.headers.items()
-                    if k.lower() not in _HOP_BY_HOP_AND_ENTITY
-                },
-                media_type=response.media_type,
-            )
+            return _api_json_response(payload, response.status_code, passthrough_headers)

@@ -1,11 +1,16 @@
+import logging
+
 from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-from starlette.middleware.gzip import GZipMiddleware
+
 from app.core.config import settings
 from app.api.v1.endpoints import router
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.session_middleware import SessionMiddleware
 from app.middleware.dedup_middleware import RequestDedupMiddleware
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -13,8 +18,15 @@ app = FastAPI(
     version=settings.PROJECT_VERSION
 )
 
-# Outermost first: compress JSON responses when client sends Accept-Encoding: gzip.
-app.add_middleware(GZipMiddleware, minimum_size=500)
+
+@app.exception_handler(Exception)
+async def unhandled_exception_json(request: Request, exc: Exception) -> JSONResponse:
+    """Return JSON for unexpected errors so API clients never get HTML/plain 500 pages."""
+    log.exception("%s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "error_type": type(exc).__name__},
+    )
 
 # Dedup runs inside Session so request.state.session_id is set (Session added after Dedup).
 app.add_middleware(RequestDedupMiddleware)
