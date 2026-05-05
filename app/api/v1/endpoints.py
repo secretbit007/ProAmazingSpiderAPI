@@ -224,10 +224,15 @@ async def solve_game(http_request: Request):
         # Log operation success
         CardArrangementLogger.log_operation_end("solve", True, None, request_id)
 
+        state_sequence = [before_state, *game_instance.solve_snapshots]
+        if state_sequence:
+            state_sequence[-1] = after_state
+
         return SolveResponse(
             initial_state=before_state,
             events=game_instance.solve_events,
             final_state=after_state,
+            state_sequence=state_sequence,
         )
     except Exception as e:
         # Log operation failure

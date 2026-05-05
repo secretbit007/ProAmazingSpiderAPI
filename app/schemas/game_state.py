@@ -62,3 +62,5 @@ class SolveResponse(BaseModel):
     initial_state: GameState
     events: List[SolveEvent]
     final_state: GameState
+    # One frame per solve step (server truth); clients should animate this instead of replaying events.
+    state_sequence: List[GameState] = Field(default_factory=list)

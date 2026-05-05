@@ -11,6 +11,8 @@ class SpiderSolitaire:
     def initialize_game(self):
         self.states = []
         self.solve_events = []
+        self.solve_snapshots: List[GameState] = []
+        self._recording_solve_animation = False
         
         self.col = 0
         self.jmov = 0
@@ -354,6 +356,8 @@ class SpiderSolitaire:
                     "rank": moved_rank,
                     "suit": moved_suit,
                 })
+                if self._recording_solve_animation:
+                    self.solve_snapshots.append(self.get_game_state())
             self.movecol = 1
 
             self.lastcard[self.col] = self.rowe
@@ -373,6 +377,8 @@ class SpiderSolitaire:
                         "rank": int(self.cardsarray[fromrow - 1, fromcolumn, 0]),
                         "suit": int(self.cardsarray[fromrow - 1, fromcolumn, 1]),
                     })
+                    if self._recording_solve_animation:
+                        self.solve_snapshots.append(self.get_game_state())
                 
             self.history(fromrow, fromcolumn, oldrow, self.col, dot)  # // history is stored to allow future undo
             movesize = self.jx - fromrow
@@ -462,8 +468,13 @@ class SpiderSolitaire:
     def solve(self):  # var   iii: integer;
         self.states.clear()
         self.solve_events.clear()
+        self.solve_snapshots.clear()
         self.oldr = -1
-        self.joinz()
+        self._recording_solve_animation = True
+        try:
+            self.joinz()
+        finally:
+            self._recording_solve_animation = False
 
 
     def removesuit(self, row, colum):  #   // removecompletesuit from display
