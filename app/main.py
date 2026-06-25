@@ -8,7 +8,6 @@ from app.core.config import settings
 from app.api.v1.endpoints import router
 from app.middleware.logging_middleware import LoggingMiddleware
 from app.middleware.session_middleware import SessionMiddleware
-from app.middleware.dedup_middleware import RequestDedupMiddleware
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +27,6 @@ async def unhandled_exception_json(request: Request, exc: Exception) -> JSONResp
         content={"detail": str(exc), "error_type": type(exc).__name__},
     )
 
-# Dedup runs inside Session so request.state.session_id is set (Session added after Dedup).
-app.add_middleware(RequestDedupMiddleware)
 app.add_middleware(SessionMiddleware)
 app.add_middleware(LoggingMiddleware)
 
