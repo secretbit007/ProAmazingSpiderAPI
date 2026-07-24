@@ -2,7 +2,6 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from fastapi.templating import Jinja2Templates
 
 from app.core.config import settings
 from app.api.v1.endpoints import router
@@ -32,14 +31,6 @@ app.add_middleware(LoggingMiddleware)
 
 app.include_router(router, prefix=settings.API_V1_STR)
 
-templates = Jinja2Templates(directory="templates")
-
 @app.get("/")
 async def root():
     return {"message": "Spider Solitaire API"}
-
-@app.get("/privacy")
-async def privacy(request: Request):
-    return templates.TemplateResponse(
-        request=request, name="privacy.html"
-    )
