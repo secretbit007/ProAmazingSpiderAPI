@@ -189,37 +189,15 @@ class SessionManager:
     
     def _extract_internal_state(self, game_instance: SpiderSolitaire) -> dict:
         """Extract internal game state for restoration"""
-        return {
-            "cardsarray": game_instance.cardsarray.tolist(),
-            "lastcard": game_instance.lastcard.tolist(),
-            "removedsuit": game_instance.removedsuit.tolist(),
-            "nextcard": game_instance.nextcard,
-            "dealnext10": game_instance.dealnext10,
-            "historycount": game_instance.historycount,
-            "difficulty": game_instance.difficulty,
-            "states": [state.dict() for state in game_instance.states] if hasattr(game_instance, 'states') else []
-        }
+        return game_instance.export_internal_state()
     
     def _restore_game_state(self, game_instance: SpiderSolitaire, game_data: dict):
         """Restore game state from saved data"""
         try:
             internal_state = game_data.get("internal_state", {})
+            game_instance.import_internal_state(internal_state)
             
-            # Restore numpy arrays
-            if "cardsarray" in internal_state:
-                game_instance.cardsarray = np.array(internal_state["cardsarray"])
-            if "lastcard" in internal_state:
-                game_instance.lastcard = np.array(internal_state["lastcard"])
-            if "removedsuit" in internal_state:
-                game_instance.removedsuit = np.array(internal_state["removedsuit"])
-            
-            # Restore other state variables
-            game_instance.nextcard = internal_state.get("nextcard", 0)
-            game_instance.dealnext10 = internal_state.get("dealnext10", 0)
-            game_instance.historycount = internal_state.get("historycount", 0)
-            game_instance.difficulty = internal_state.get("difficulty", 0)
-            
-            # Restore states history
+            # Restore states history if present (legacy saves)
             if "states" in internal_state:
                 from app.schemas.game_state import GameState
                 game_instance.states = [GameState(**state) for state in internal_state["states"]]

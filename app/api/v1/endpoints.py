@@ -1,9 +1,18 @@
 from fastapi import APIRouter, HTTPException, Request
 from app.core.game_logic import game_instance
 from app.core.session_manager import session_manager
-from app.schemas.game_state import GameState, MoveRequest, NewGameRequest, SessionResponse, SolveResponse
+from app.core.daily import DAILY_DIFFICULTY, DAILY_SUIT_COUNT, daily_seed, parse_date
+from app.schemas.game_state import (
+    DailyChallengeResponse,
+    GameState,
+    HintResponse,
+    MoveRequest,
+    NewGameRequest,
+    SessionResponse,
+    SolveResponse,
+)
 from app.utils.logger import CardArrangementLogger
-from typing import List
+from typing import List, Optional
 
 router = APIRouter()
 
@@ -15,7 +24,7 @@ async def new_game(request: NewGameRequest, http_request: Request):
     # Log operation start
     CardArrangementLogger.log_operation_start(
         "new_game", 
-        {"difficulty": request.difficulty, "session_id": session_id}, 
+        {"difficulty": request.difficulty, "suit_count": request.suit_count, "seed": request.seed, "session_id": session_id}, 
         request_id
     )
     
@@ -30,7 +39,7 @@ async def new_game(request: NewGameRequest, http_request: Request):
             raise HTTPException(status_code=400, detail="Failed to create or retrieve session")
 
         # Initialize new game
-        game_instance.new_game(request.difficulty)
+        game_instance.new_game(request.difficulty, request.suit_count, request.seed)
         game_state = game_instance.get_game_state()
         
         # Save session state
@@ -280,6 +289,44 @@ async def undo_move(http_request: Request):
         # Log operation failure
         CardArrangementLogger.log_operation_end("undo", False, str(e), request_id)
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/hint", response_model=HintResponse)
+async def get_hint(http_request: Request):
+    request_id = getattr(http_request.state, 'request_id', None)
+    session_id = getattr(http_request.state, 'session_id', None)
+
+    CardArrangementLogger.log_operation_start("hint", {"session_id": session_id}, request_id)
+
+    try:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="Session ID required")
+
+        game_instance = session_manager.get_session(session_id)
+        if not game_instance:
+            raise HTTPException(status_code=404, detail="Session not found or expired")
+
+        hint = game_instance.suggest_hint()
+        CardArrangementLogger.log_operation_end("hint", True, None, request_id)
+        return HintResponse(**hint)
+    except HTTPException:
+        raise
+    except Exception as e:
+        CardArrangementLogger.log_operation_end("hint", False, str(e), request_id)
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/daily", response_model=DailyChallengeResponse)
+async def get_daily_challenge(date: Optional[str] = None):
+    try:
+        date_str = parse_date(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+
+    return DailyChallengeResponse(
+        date=date_str,
+        seed=daily_seed(date_str),
+        difficulty=DAILY_DIFFICULTY,
+        suit_count=DAILY_SUIT_COUNT,
+    )
 
 @router.post("/cleanup-sessions")
 async def cleanup_sessions(http_request: Request):

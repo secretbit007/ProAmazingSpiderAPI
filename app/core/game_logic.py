@@ -38,6 +38,8 @@ class SpiderSolitaire:
 
         self.facedown = 15
         self.difficulty = 0
+        self.suit_count = 4
+        self.deal_seed = None
 
         self.cardrownumber = 0
         self.cardcolumn = 0
@@ -69,6 +71,8 @@ class SpiderSolitaire:
         self.historysize = 1000
         self.u = np.zeros(shape=18, dtype='int32')
         self.dims = np.zeros(shape=18, dtype='int32')
+        for jm in range(10):
+            self.dims[jm] = jm
         self.removedsuit = np.zeros(shape=9, dtype='int32')
 
         self.lastcard = np.zeros(shape=10, dtype='int32')
@@ -102,6 +106,66 @@ class SpiderSolitaire:
         self.newdig = np.zeros(shape=14, dtype='int32')
         self.oldmasthead = -1
         self.repsuity = 0
+
+    def _card_suit(self, dck_value: int) -> int:
+        """Map a deck index onto 1, 2, or 4 suits."""
+        sc = self.suit_count if self.suit_count in (1, 2, 4) else 4
+        if sc == 1:
+            return 1
+        if sc == 2:
+            return (int(dck_value) % 2) + 1
+        return (int(dck_value) % 4) + 1
+
+    def export_internal_state(self) -> dict:
+        return {
+            "cardsarray": self.cardsarray.tolist(),
+            "lastcard": self.lastcard.tolist(),
+            "caxsx": self.caxsx.tolist(),
+            "removedsuit": self.removedsuit.tolist(),
+            "dck": self.dck.tolist(),
+            "histrec": self.histrec.tolist(),
+            "colmoves": self.colmoves.tolist(),
+            "nextcard": int(self.nextcard),
+            "dealnext10": int(self.dealnext10),
+            "historycount": int(self.historycount),
+            "difficulty": int(self.difficulty),
+            "suit_count": int(self.suit_count),
+            "deal_seed": self.deal_seed,
+            "oldr": int(self.oldr),
+            "oldc": int(self.oldc),
+            "oldmasthead": int(self.oldmasthead),
+        }
+
+    def import_internal_state(self, data: dict) -> None:
+        if "cardsarray" in data:
+            self.cardsarray = np.array(data["cardsarray"], dtype="int32")
+        if "lastcard" in data:
+            self.lastcard = np.array(data["lastcard"], dtype="int32")
+        if "caxsx" in data:
+            self.caxsx = np.array(data["caxsx"], dtype="int32")
+        if "removedsuit" in data:
+            self.removedsuit = np.array(data["removedsuit"], dtype="int32")
+        if "dck" in data:
+            self.dck = np.array(data["dck"], dtype="int32")
+        if "histrec" in data:
+            self.histrec = np.array(data["histrec"], dtype="int32")
+        if "colmoves" in data:
+            self.colmoves = np.array(data["colmoves"], dtype="int32")
+        self.nextcard = data.get("nextcard", 0)
+        self.dealnext10 = data.get("dealnext10", 0)
+        self.historycount = data.get("historycount", 0)
+        self.difficulty = data.get("difficulty", 0)
+        self.suit_count = data.get("suit_count", 4)
+        self.deal_seed = data.get("deal_seed")
+        self.oldr = data.get("oldr", -1)
+        self.oldc = data.get("oldc", -1)
+        self.oldmasthead = data.get("oldmasthead", -1)
+        self.states = []
+
+    def _clone_for_hint(self) -> "SpiderSolitaire":
+        clone = SpiderSolitaire()
+        clone.import_internal_state(self.export_internal_state())
+        return clone
 
 
     def new(self):
@@ -155,13 +219,14 @@ class SpiderSolitaire:
                 self.cds[m + j] = j
                 self.newdig[j] = 0  # Reset here as well for safety
         
+        rng = random.Random(self.deal_seed)
         cdsleft = 52
         cdstrt = 1
         
         while cdsleft > 0:
             newrand = 0
             while newrand == 0:
-                n = random.randint(0, cdsleft - 1) + 1
+                n = rng.randint(0, cdsleft - 1) + 1
                 u = self.card[n] % 13 + 1   # card[n] is original ordered pack
                 if cdsleft > 51 - self.difficulty:
                     if self.newdig[u] > 0:
@@ -210,11 +275,11 @@ class SpiderSolitaire:
                 if self.nextcard < 44 or (self.nextcard < 54 and rowdepth == self.rowbase + 7):
                     self.cardsarray[rowdepth, jlo, 0] = self.facedown
                     self.caxsx[rowdepth, jlo, 0] = self.dck[self.nextcard + 1] % 13 + 1
-                    self.caxsx[rowdepth, jlo, 1] = self.dck[self.nextcard + 1] % 4 + 1
+                    self.caxsx[rowdepth, jlo, 1] = self._card_suit(self.dck[self.nextcard + 1])
                     self.nextcard = self.nextcard + 1
                 elif self.nextcard < 54:
                     self.cardsarray[rowdepth, jl, 0] = self.dck[self.nextcard + 1] % 13 + 1
-                    self.cardsarray[rowdepth, jl, 1] = self.dck[self.nextcard + 1] % 4 + 1
+                    self.cardsarray[rowdepth, jl, 1] = self._card_suit(self.dck[self.nextcard + 1])
                     self.nextcard = self.nextcard + 1
 
             rowdepth = rowdepth + 1
@@ -224,7 +289,7 @@ class SpiderSolitaire:
             tenct = self.lastcard[self.it]  #  find0(tenct, it80)
 
             self.cardsarray[tenct + 1, self.it, 0] = self.dck[self.nextcard + 1] % 13 + 1
-            self.cardsarray[tenct + 1, self.it, 1] = self.dck[self.nextcard + 1] % 4 + 1
+            self.cardsarray[tenct + 1, self.it, 1] = self._card_suit(self.dck[self.nextcard + 1])
 
             self.lastcard[self.it] = tenct + 1
             
@@ -1029,7 +1094,96 @@ class SpiderSolitaire:
 
         self.suitremoved = 0
 
-    def new_game(self, difficulty):
+    def suggest_hint(self) -> dict:
+        """Find one legal tap without mutating this instance."""
+        candidates = []
+        for col in range(10):
+            last = int(self.lastcard[col])
+            if last < self.rowbase:
+                continue
+            row = last
+            while row >= self.rowbase:
+                rank = int(self.cardsarray[row, col, 0])
+                if rank == 0 or rank == self.facedown:
+                    break
+                from_row = row - self.rowbase + 1
+                candidates.append((from_row, col))
+                if row == self.rowbase:
+                    break
+                above = int(self.cardsarray[row - 1, col, 0])
+                if above == 0 or above == self.facedown or above != rank + 1:
+                    break
+                row -= 1
+
+        best = None
+        reason_rank = {"complete_suit": 3, "same_suit": 2, "rank": 1, "empty": 0}
+        for from_row, col in candidates:
+            clone = self._clone_for_hint()
+            clone.oldr = -1
+            clone.oldc = -1
+            clone.oldmasthead = -1
+            before_last = clone.lastcard.copy()
+            before_removed = int(np.count_nonzero(clone.removedsuit))
+            clone.cardfrontclick(rw=from_row, cl=col)
+            after_removed = int(np.count_nonzero(clone.removedsuit))
+            changed = not np.array_equal(clone.cardsarray, self.cardsarray)
+            if not changed:
+                continue
+            to_col = None
+            reason = "rank"
+            if after_removed > before_removed:
+                reason = "complete_suit"
+            else:
+                for k in range(10):
+                    if k != col and int(clone.lastcard[k]) > int(before_last[k]):
+                        to_col = k
+                        dest_row = int(before_last[k])
+                        if dest_row < clone.rowbase:
+                            reason = "empty"
+                        else:
+                            src_suit = int(self.cardsarray[from_row + self.rowbase - 1, col, 1])
+                            dest_suit = int(self.cardsarray[dest_row, k, 1])
+                            reason = "same_suit" if src_suit == dest_suit else "rank"
+                        break
+                if to_col is None:
+                    reason = "empty"
+            score = reason_rank.get(reason, 0)
+            pick = {
+                "from_row": from_row,
+                "from_col": col,
+                "to_col": to_col,
+                "reason": reason,
+                "score": score,
+            }
+            if best is None or pick["score"] > best["score"] or (
+                pick["score"] == best["score"] and from_row < best["from_row"]
+            ):
+                best = pick
+
+        if best is None:
+            return {
+                "from_row": None,
+                "from_col": None,
+                "to_col": None,
+                "reason": "none",
+                "message": "No moves right now — try Deal.",
+            }
+
+        messages = {
+            "complete_suit": "Tap this King to clear a completed suit.",
+            "same_suit": "Build this onto the same suit.",
+            "rank": "This card can drop onto the matching rank.",
+            "empty": "Move this card into an empty column.",
+        }
+        return {
+            "from_row": best["from_row"],
+            "from_col": best["from_col"],
+            "to_col": best["to_col"],
+            "reason": best["reason"],
+            "message": messages.get(best["reason"], "Try this card."),
+        }
+
+    def new_game(self, difficulty, suit_count=4, seed=None):
         self.initialize_game()
 
         for jm in range(17):
@@ -1038,7 +1192,10 @@ class SpiderSolitaire:
                 self.dims[jm] = jm  # * 80
             else:
                 self.dims[jm] = 0
-        self.difficulty = 9 - difficulty
+        clamped = max(0, min(9, int(difficulty)))
+        self.difficulty = 9 - clamped
+        self.suit_count = suit_count if suit_count in (1, 2, 4) else 4
+        self.deal_seed = seed
 
         self.new()
 
@@ -1101,7 +1258,9 @@ class SpiderSolitaire:
             completed_sequences_by_suit=completed_sequences_by_suit,
             moves=self.historycount,
             difficulty=9 - self.difficulty,  # Convert internal difficulty to external
-            draws_remaining=draws_remaining
+            draws_remaining=draws_remaining,
+            suit_count=self.suit_count if self.suit_count in (1, 2, 4) else 4,
+            seed=self.deal_seed,
         )
 
 # Singleton game instance

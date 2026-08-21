@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Dict
 
 class Card(BaseModel):
@@ -20,6 +20,8 @@ class GameState(BaseModel):
     moves: int
     difficulty: int
     draws_remaining: int
+    suit_count: int = 4
+    seed: Optional[int] = None
 
     @model_validator(mode="after")
     def normalize_stock_wire_format(self) -> "GameState":
@@ -39,6 +41,36 @@ class MoveRequest(BaseModel):
 
 class NewGameRequest(BaseModel):
     difficulty: int = 9
+    suit_count: int = 4
+    seed: Optional[int] = None
+
+    @field_validator("difficulty")
+    @classmethod
+    def clamp_difficulty(cls, value: int) -> int:
+        return max(0, min(9, value))
+
+    @field_validator("suit_count")
+    @classmethod
+    def validate_suit_count(cls, value: int) -> int:
+        if value not in (1, 2, 4):
+            raise ValueError("suit_count must be 1, 2, or 4")
+        return value
+
+
+class HintResponse(BaseModel):
+    from_row: Optional[int] = None
+    from_col: Optional[int] = None
+    to_col: Optional[int] = None
+    reason: str
+    message: str
+
+
+class DailyChallengeResponse(BaseModel):
+    date: str
+    seed: int
+    difficulty: int
+    suit_count: int
+    label: str = "Daily Challenge"
 
 class SessionRequest(BaseModel):
     session_id: Optional[str] = None

@@ -4,7 +4,9 @@ A FastAPI implementation of the ProAmazingSpider card game.
 
 ## Features
 
-- Create new games with configurable difficulty (1, 2, or 4 suits)
+- Create new games with difficulty 0–9, 1/2/4 suits, and optional seeded deals
+- Daily challenge: `GET /api/v1/daily` returns a shared date/seed for every player
+- Hints: `POST /api/v1/hint` suggests a move without changing the board
 - Make moves between tableau piles
 - Draw new cards from the stock
 - Check game state and win conditions
