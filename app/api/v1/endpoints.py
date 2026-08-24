@@ -2,10 +2,13 @@ from fastapi import APIRouter, HTTPException, Request
 from app.core.game_logic import game_instance
 from app.core.session_manager import session_manager
 from app.core.daily import DAILY_DIFFICULTY, DAILY_SUIT_COUNT, daily_seed, parse_date
+from app.core.leaderboard import store as leaderboard_store
 from app.schemas.game_state import (
     DailyChallengeResponse,
     GameState,
     HintResponse,
+    LeaderboardResponse,
+    LeaderboardSubmitRequest,
     MoveRequest,
     NewGameRequest,
     SessionResponse,
@@ -327,6 +330,55 @@ async def get_daily_challenge(date: Optional[str] = None):
         difficulty=DAILY_DIFFICULTY,
         suit_count=DAILY_SUIT_COUNT,
     )
+
+
+@router.get("/leaderboard/daily", response_model=LeaderboardResponse)
+async def get_daily_leaderboard(date: Optional[str] = None, player_id: Optional[str] = None):
+    try:
+        date_str = parse_date(date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+    return LeaderboardResponse(**leaderboard_store.as_response(date_str, player_id))
+
+
+@router.post("/leaderboard/daily", response_model=LeaderboardResponse)
+async def submit_daily_score(body: LeaderboardSubmitRequest, http_request: Request):
+    try:
+        date_str = parse_date(body.date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
+
+    session_id = getattr(http_request.state, "session_id", None)
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Session ID required")
+
+    game_instance = session_manager.get_session(session_id)
+    if not game_instance:
+        raise HTTPException(status_code=404, detail="Session not found or expired")
+
+    if getattr(game_instance, "solve_events", None):
+        raise HTTPException(status_code=400, detail="Solve games are not posted to the daily board")
+
+    state = game_instance.get_game_state()
+    if (
+        state.seed != daily_seed(date_str)
+        or state.difficulty != DAILY_DIFFICULTY
+        or state.suit_count != DAILY_SUIT_COUNT
+    ):
+        raise HTTPException(status_code=400, detail="This game is not the Daily Challenge for that date")
+    if state.completed_sequences < 8:
+        raise HTTPException(status_code=400, detail="Finish the Daily Challenge before posting a score")
+
+    return LeaderboardResponse(
+        **leaderboard_store.submit(
+            date_str,
+            body.player_id,
+            body.nickname,
+            state.moves,
+            body.elapsed_seconds,
+        )
+    )
+
 
 @router.post("/cleanup-sessions")
 async def cleanup_sessions(http_request: Request):

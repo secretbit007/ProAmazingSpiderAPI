@@ -209,6 +209,9 @@ __marimo__/
 app/sessions/
 sessions/
 
+# Daily leaderboard files
+leaderboards/
+
 # Log files (auto-generated)
 *.log
 app/*.log

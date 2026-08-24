@@ -72,6 +72,63 @@ class DailyChallengeResponse(BaseModel):
     suit_count: int
     label: str = "Daily Challenge"
 
+
+class LeaderboardSubmitRequest(BaseModel):
+    player_id: str
+    nickname: str
+    elapsed_seconds: int
+    date: Optional[str] = None
+
+    @field_validator("player_id")
+    @classmethod
+    def validate_player_id(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not (8 <= len(cleaned) <= 64):
+            raise ValueError("player_id must be 8-64 characters")
+        if any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-" for ch in cleaned):
+            raise ValueError("player_id has invalid characters")
+        return cleaned
+
+    @field_validator("nickname")
+    @classmethod
+    def validate_nickname(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned or len(cleaned) > 20:
+            raise ValueError("nickname must be 1-20 characters")
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .'_-")
+        if any(ch not in allowed for ch in cleaned):
+            raise ValueError("nickname has invalid characters")
+        return cleaned
+
+    @field_validator("elapsed_seconds")
+    @classmethod
+    def clamp_elapsed(cls, value: int) -> int:
+        return max(0, min(24 * 3600, int(value)))
+
+
+class LeaderboardEntryPublic(BaseModel):
+    rank: int
+    nickname: str
+    score: int
+    moves: int
+    elapsed_seconds: int
+    is_you: bool = False
+
+
+class LeaderboardYou(BaseModel):
+    rank: int
+    nickname: str
+    score: int
+    moves: int
+    elapsed_seconds: int
+
+
+class LeaderboardResponse(BaseModel):
+    date: str
+    entries: List[LeaderboardEntryPublic] = Field(default_factory=list)
+    you: Optional[LeaderboardYou] = None
+    total: int = 0
+
 class SessionRequest(BaseModel):
     session_id: Optional[str] = None
 
