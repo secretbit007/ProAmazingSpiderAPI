@@ -2,14 +2,81 @@ import os
 import json
 import uuid
 import time
+import copy
 import numpy as np
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 from pathlib import Path
 from app.core.game_logic import SpiderSolitaire
 from app.schemas.game_state import GameState
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _completed_suit_count(game_instance: SpiderSolitaire) -> int:
+    return int(sum(1 for suit in game_instance.removedsuit if int(suit) > 0))
+
+
+def snapshot_play_state(game_instance: SpiderSolitaire) -> Dict[str, Any]:
+    """Capture board, history, tap-cycle, timer, and solve-ban state for rollback."""
+    return {
+        "internal": game_instance.export_internal_state(),
+        "solve_events": copy.deepcopy(getattr(game_instance, "solve_events", [])),
+        "deal_started_at": getattr(game_instance, "deal_started_at", None),
+        "deal_completed_at": getattr(game_instance, "deal_completed_at", None),
+        "masthead": getattr(game_instance, "masthead", None),
+    }
+
+
+def restore_play_state(game_instance: SpiderSolitaire, snap: Dict[str, Any]) -> None:
+    game_instance.import_internal_state(snap["internal"])
+    game_instance.solve_events = copy.deepcopy(snap.get("solve_events") or [])
+    game_instance.deal_started_at = snap.get("deal_started_at")
+    game_instance.deal_completed_at = snap.get("deal_completed_at")
+    if snap.get("masthead") is not None:
+        game_instance.masthead = snap["masthead"]
+
+
+def board_and_history_unchanged(game_instance: SpiderSolitaire, snap: Dict[str, Any]) -> bool:
+    before = snap.get("internal") or {}
+    before_board = np.array(before.get("cardsarray", []), dtype="int32")
+    return (
+        np.array_equal(game_instance.cardsarray, before_board)
+        and int(game_instance.historycount) == int(before.get("historycount", 0))
+        and int(game_instance.dealnext10) == int(before.get("dealnext10", 0))
+        and int(game_instance.nextcard) == int(before.get("nextcard", 0))
+    )
+
+
+def sync_deal_timer(game_instance: SpiderSolitaire) -> None:
+    """Stop the deal clock when the eighth suit comes off; resume if undone."""
+    if _completed_suit_count(game_instance) >= 8:
+        if getattr(game_instance, "deal_completed_at", None) is None:
+            game_instance.deal_completed_at = time.time()
+    else:
+        game_instance.deal_completed_at = None
+
+
+def apply_session_extras(game_instance: SpiderSolitaire, extras: Optional[dict]) -> None:
+    if not extras:
+        return
+    if "deal_started_at" in extras:
+        game_instance.deal_started_at = extras.get("deal_started_at")
+    if "deal_completed_at" in extras:
+        game_instance.deal_completed_at = extras.get("deal_completed_at")
+    if "solve_events" in extras and extras.get("solve_events") is not None:
+        game_instance.solve_events = copy.deepcopy(extras.get("solve_events") or [])
+    if extras.get("masthead") is not None:
+        game_instance.masthead = extras.get("masthead")
+
+
+def collect_session_extras(game_instance: SpiderSolitaire) -> dict:
+    return {
+        "deal_started_at": getattr(game_instance, "deal_started_at", None),
+        "deal_completed_at": getattr(game_instance, "deal_completed_at", None),
+        "solve_events": copy.deepcopy(getattr(game_instance, "solve_events", [])),
+        "masthead": getattr(game_instance, "masthead", None),
+    }
 
 class SessionManager:
     """Manages game sessions for guest users with file-based storage"""
@@ -76,6 +143,7 @@ class SessionManager:
             
             # Try to restore game state from file
             game_state_file = self.sessions_dir / f"{session_id}_game.json"
+            game_data = None
             if game_state_file.exists():
                 try:
                     with open(game_state_file, 'r') as f:
@@ -83,6 +151,16 @@ class SessionManager:
                     self._restore_game_state(game_instance, game_data)
                 except Exception as e:
                     logger.warning(f"Failed to restore game state for session {session_id}: {e}")
+
+            extras = {}
+            extras.update({k: session_data[k] for k in (
+                "deal_started_at", "deal_completed_at", "solve_events", "masthead"
+            ) if k in session_data})
+            if isinstance(game_data, dict):
+                extras.update({k: game_data[k] for k in (
+                    "deal_started_at", "deal_completed_at", "solve_events", "masthead"
+                ) if k in game_data})
+            apply_session_extras(game_instance, extras)
             
             # Store in memory
             self.active_sessions[session_id] = game_instance
@@ -104,6 +182,8 @@ class SessionManager:
         
         try:
             game_instance = self.active_sessions[session_id]
+            sync_deal_timer(game_instance)
+            extras = collect_session_extras(game_instance)
             game_state = game_instance.get_game_state()
             
             # Save game state to file
@@ -111,11 +191,14 @@ class SessionManager:
             game_data = {
                 "game_state": game_state.dict(),
                 "internal_state": self._extract_internal_state(game_instance),
-                "saved_at": time.time()
+                "saved_at": time.time(),
             }
+            game_data.update(extras)
             
             with open(game_state_file, 'w') as f:
                 json.dump(game_data, f, default=str)
+
+            self._write_session_extras(session_id, extras)
             
             # Update session access time
             self._update_session_access_time(session_id)
@@ -167,6 +250,19 @@ class SessionManager:
                     json.dump(session_data, f)
             except Exception as e:
                 logger.warning(f"Failed to update access time for session {session_id}: {e}")
+
+    def _write_session_extras(self, session_id: str, extras: dict) -> None:
+        session_file = self.sessions_dir / f"{session_id}.json"
+        if not session_file.exists():
+            return
+        try:
+            with open(session_file, 'r') as f:
+                session_data = json.load(f)
+            session_data.update(extras)
+            with open(session_file, 'w') as f:
+                json.dump(session_data, f, default=str)
+        except Exception as e:
+            logger.warning(f"Failed to persist session extras for {session_id}: {e}")
     
     def _cleanup_session(self, session_id: str):
         """Remove session from memory and filesystem"""
@@ -201,10 +297,13 @@ class SessionManager:
             if "states" in internal_state:
                 from app.schemas.game_state import GameState
                 game_instance.states = [GameState(**state) for state in internal_state["states"]]
+
+            apply_session_extras(game_instance, game_data)
             
         except Exception as e:
             logger.error(f"Error restoring game state: {e}")
             # If restoration fails, the game will start fresh
+            apply_session_extras(game_instance, game_data)
 
 # Global session manager instance
 session_manager = SessionManager()

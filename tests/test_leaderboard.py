@@ -27,12 +27,17 @@ def _start_daily():
     return created.json()["session_id"], daily
 
 
-def _force_win(session_id: str, moves: int = 80) -> None:
+def _force_win(session_id: str, moves: int = 80, elapsed: int = 400) -> None:
     game = session_manager.get_session(session_id)
     assert game is not None
     game.removedsuit[0:8] = [1, 2, 3, 4, 1, 2, 3, 4]
     game.historycount = moves
     game.solve_events = []
+    started = getattr(game, "deal_started_at", None)
+    if started is None:
+        started = 1_000_000.0
+        game.deal_started_at = started
+    game.deal_completed_at = float(started) + elapsed
 
 
 def test_daily_board_empty(tmp_path):
@@ -87,7 +92,7 @@ def test_submit_and_rank(tmp_path):
         json={
             "player_id": PLAYER,
             "nickname": "Normand",
-            "elapsed_seconds": 400,
+            "elapsed_seconds": 1,
             "date": DATE,
         },
     )
@@ -97,18 +102,19 @@ def test_submit_and_rank(tmp_path):
     assert body["you"]["rank"] == 1
     assert body["you"]["nickname"] == "Normand"
     assert body["entries"][0]["is_you"] is True
+    assert body["you"]["elapsed_seconds"] == 400
     expected = 10000 - 80 * 15 - 400 * 2
     assert body["you"]["score"] == expected
 
     worse_session, _ = _start_daily()
-    _force_win(worse_session, moves=120)
+    _force_win(worse_session, moves=120, elapsed=900)
     other = client.post(
         "/api/v1/leaderboard/daily",
         headers={"X-Session-ID": worse_session},
         json={
             "player_id": "player-test-002",
             "nickname": "Alex",
-            "elapsed_seconds": 900,
+            "elapsed_seconds": 1,
             "date": DATE,
         },
     )
@@ -129,19 +135,19 @@ def test_same_player_keeps_best_score(tmp_path):
         json={
             "player_id": PLAYER,
             "nickname": "Normand",
-            "elapsed_seconds": 400,
+            "elapsed_seconds": 1,
             "date": DATE,
         },
     )
     second, _ = _start_daily()
-    _force_win(second, moves=200)
+    _force_win(second, moves=200, elapsed=900)
     again = client.post(
         "/api/v1/leaderboard/daily",
         headers={"X-Session-ID": second},
         json={
             "player_id": PLAYER,
             "nickname": "Norm",
-            "elapsed_seconds": 900,
+            "elapsed_seconds": 1,
             "date": DATE,
         },
     )
@@ -157,6 +163,73 @@ def test_solve_games_are_rejected(tmp_path):
     _force_win(session_id, moves=10)
     game = session_manager.get_session(session_id)
     game.solve_events = [{"type": "move"}]
+    response = client.post(
+        "/api/v1/leaderboard/daily",
+        headers={"X-Session-ID": session_id},
+        json={
+            "player_id": PLAYER,
+            "nickname": "Normand",
+            "elapsed_seconds": 30,
+            "date": DATE,
+        },
+    )
+    assert response.status_code == 400
+    assert "Solve" in response.json()["detail"]
+
+
+def test_submit_rejects_missing_deal_start(tmp_path):
+    _isolate(tmp_path)
+    session_id, _ = _start_daily()
+    _force_win(session_id, moves=80, elapsed=400)
+    game = session_manager.get_session(session_id)
+    game.deal_started_at = None
+    response = client.post(
+        "/api/v1/leaderboard/daily",
+        headers={"X-Session-ID": session_id},
+        json={
+            "player_id": PLAYER,
+            "nickname": "Normand",
+            "elapsed_seconds": 400,
+            "date": DATE,
+        },
+    )
+    assert response.status_code == 400
+    assert "Deal start time" in response.json()["detail"]
+    board = client.get("/api/v1/leaderboard/daily", params={"date": DATE, "player_id": PLAYER})
+    assert board.json()["total"] == 0
+
+
+def test_client_elapsed_is_ignored_in_favor_of_deal_clock(tmp_path):
+    _isolate(tmp_path)
+    session_id, _ = _start_daily()
+    _force_win(session_id, moves=80, elapsed=10)
+    posted = client.post(
+        "/api/v1/leaderboard/daily",
+        headers={"X-Session-ID": session_id},
+        json={
+            "player_id": PLAYER,
+            "nickname": "Normand",
+            "elapsed_seconds": 900,
+            "date": DATE,
+        },
+    )
+    assert posted.status_code == 200
+    body = posted.json()
+    assert body["you"]["elapsed_seconds"] == 10
+    assert body["you"]["score"] == 10000 - 80 * 15 - 10 * 2
+
+
+def test_solve_ban_survives_file_restore(tmp_path):
+    _isolate(tmp_path)
+    session_id, _ = _start_daily()
+    _force_win(session_id, moves=10, elapsed=30)
+    game = session_manager.get_session(session_id)
+    game.solve_events = [{"type": "move"}]
+    assert session_manager.save_session(session_id)
+    del session_manager.active_sessions[session_id]
+
+    restored = session_manager.get_session(session_id)
+    assert restored.solve_events
     response = client.post(
         "/api/v1/leaderboard/daily",
         headers={"X-Session-ID": session_id},
